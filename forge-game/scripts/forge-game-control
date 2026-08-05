@@ -1,0 +1,40 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import json
+import sys
+
+
+def _runtime_error(code: str, message: str) -> int:
+    command = sys.argv[1] if len(sys.argv) > 1 else "runtime-check"
+    response = {
+        "ok": False,
+        "command": command,
+        "error": {"code": code, "message": message},
+    }
+    sys.stdout.write(json.dumps(response, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+    sys.stderr.write(f"forge-game-control: {message}\n")
+    return 5
+
+
+if sys.version_info[:2] != (3, 12):
+    raise SystemExit(
+        _runtime_error(
+            "unsupported_python",
+            "CPython 3.12 is required; run the control plane in its pinned environment",
+        )
+    )
+
+try:
+    from forge_game_control.cli import main
+except ModuleNotFoundError as exc:
+    raise SystemExit(
+        _runtime_error(
+            "runtime_dependency_missing",
+            f"Missing runtime dependency {exc.name!r}; restore the pinned environment from requirements.lock",
+        )
+    ) from exc
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

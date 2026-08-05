@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "forge-game://schemas/action-result/1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_id",
+    "schema_version",
+    "result_id",
+    "intent_id",
+    "intent_hash",
+    "policy_decision_id",
+    "policy_decision_hash",
+    "outcome",
+    "adapter_id",
+    "adapter_fingerprint",
+    "runtime_fingerprint",
+    "started_at",
+    "finished_at",
+    "exit_code",
+    "error_code",
+    "before_hashes",
+    "after_hashes",
+    "evidence_refs",
+    "changed_target_ids",
+    "rollback_status",
+    "content_hash"
+  ],
+  "properties": {
+    "schema_id": {"const": "forge-game://schemas/action-result/1.0.0"},
+    "schema_version": {"const": "1.0.0"},
+    "result_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "intent_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "intent_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+    "policy_decision_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "policy_decision_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+    "outcome": {"enum": ["succeeded", "failed", "partial", "unknown", "cancelled"]},
+    "adapter_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "adapter_fingerprint": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "runtime_fingerprint": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "started_at": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/timestamp"},
+    "finished_at": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/timestamp"},
+    "exit_code": {"type": ["integer", "null"]},
+    "error_code": {"type": ["string", "null"]},
+    "before_hashes": {"$ref": "#/$defs/hashMap"},
+    "after_hashes": {"$ref": "#/$defs/hashMap"},
+    "evidence_refs": {
+      "type": "array",
+      "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/artifactRef"}
+    },
+    "changed_target_ids": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "rollback_status": {"enum": ["not_needed", "not_attempted", "succeeded", "failed", "indeterminate"]},
+    "content_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+  },
+  "$defs": {
+    "hashMap": {
+      "type": "object",
+      "additionalProperties": {
+        "oneOf": [
+          {"type": "null"},
+          {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+        ]
+      }
+    }
+  }
+}

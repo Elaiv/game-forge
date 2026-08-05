@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "forge-game://schemas/action-intent/1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_id",
+    "schema_version",
+    "intent_id",
+    "run_id",
+    "workflow_id",
+    "workflow_version",
+    "phase_id",
+    "attempt",
+    "role",
+    "action_id",
+    "action_class",
+    "targets",
+    "parameters",
+    "subject_hashes",
+    "provenance_refs",
+    "rationale",
+    "required_capability_ids",
+    "approval_refs",
+    "idempotency_key",
+    "created_at",
+    "content_hash"
+  ],
+  "properties": {
+    "schema_id": {"const": "forge-game://schemas/action-intent/1.0.0"},
+    "schema_version": {"const": "1.0.0"},
+    "intent_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "run_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "workflow_id": {"enum": ["bootstrap", "feature", "refresh", "release"]},
+    "workflow_version": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/semver"},
+    "phase_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "attempt": {"type": "integer", "minimum": 1},
+    "role": {
+      "enum": ["orchestrator", "analyst", "architect", "implementer", "test_agent", "reviewer", "verifier"]
+    },
+    "action_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "action_class": {
+      "enum": [
+        "project_file_mutation",
+        "project_file_removal",
+        "process_execution",
+        "network_fetch",
+        "dependency_installation",
+        "git_mutation",
+        "lfs_mutation",
+        "unreal_asset_mutation",
+        "unreal_query",
+        "credential_use",
+        "release_publishing",
+        "runtime_mutation"
+      ]
+    },
+    "targets": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/target"}
+    },
+    "parameters": {"type": "object"},
+    "subject_hashes": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+    },
+    "provenance_refs": {
+      "type": "array",
+      "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/artifactRef"}
+    },
+    "rationale": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "required_capability_ids": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}
+    },
+    "approval_refs": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}
+    },
+    "idempotency_key": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "created_at": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/timestamp"},
+    "content_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+  },
+  "$defs": {
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["target_id", "kind", "value", "expected_hash"],
+      "properties": {
+        "target_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+        "kind": {"enum": ["path", "url", "git_ref", "lfs_path", "unreal_asset", "package", "release"]},
+        "value": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+        "expected_hash": {
+          "oneOf": [
+            {"type": "null"},
+            {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+          ]
+        }
+      }
+    }
+  }
+}

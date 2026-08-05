@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=75,<76"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "forge-game-control"
+version = "0.9.0"
+description = "Deterministic control plane for the forge-game Codex skill"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "jsonschema>=4.23,<5",
+  "pypdf>=6.14,<7",
+  "rfc8785>=0.1.4,<1",
+]
+
+[project.scripts]
+forge-game-control = "forge_game_control.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "scripts"}
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["scripts"]
+include = ["forge_game_control*"]
+
+[tool.setuptools.package-data]
+forge_game_control = [
+  "resources/schemas/*.json",
+  "resources/workflows/*.json",
+  "resources/policies/*.json",
+]
+
+[tool.setuptools.data-files]
+"share/forge-game/project-local" = ["assets/project-local/template-manifest.json"]
+"share/forge-game/project-local/templates" = ["assets/project-local/templates/*.tmpl"]

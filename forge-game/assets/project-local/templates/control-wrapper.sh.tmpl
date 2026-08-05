@@ -1,0 +1,4 @@
+#!/bin/sh
+set -eu
+root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
+exec "$root/runtime-env/bin/python" "$root/bin/forge-game-control.py" "$@"

@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "forge-game://schemas/adapter-health/1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_id",
+    "schema_version",
+    "adapter_id",
+    "status",
+    "reason_codes",
+    "environment_fingerprint",
+    "checked_at",
+    "content_hash"
+  ],
+  "properties": {
+    "schema_id": {"const": "forge-game://schemas/adapter-health/1.0.0"},
+    "schema_version": {"const": "1.0.0"},
+    "adapter_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "status": {"enum": ["healthy", "degraded", "unavailable"]},
+    "reason_codes": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]*$"}
+    },
+    "environment_fingerprint": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "checked_at": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/timestamp"},
+    "content_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+  }
+}

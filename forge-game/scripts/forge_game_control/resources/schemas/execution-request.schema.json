@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "forge-game://schemas/execution-request/1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_id",
+    "schema_version",
+    "request_id",
+    "intent",
+    "policy_context",
+    "approval_store_root",
+    "approval_verification_contexts",
+    "adapter_plan_request",
+    "adapter_plan",
+    "runtime_root",
+    "requested_at",
+    "content_hash"
+  ],
+  "properties": {
+    "schema_id": {"const": "forge-game://schemas/execution-request/1.0.0"},
+    "schema_version": {"const": "1.0.0"},
+    "request_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "intent": {"$ref": "forge-game://schemas/action-intent/1.0.0"},
+    "policy_context": {"$ref": "forge-game://schemas/policy-context/1.0.0"},
+    "approval_store_root": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "approval_verification_contexts": {
+      "type": "object",
+      "additionalProperties": {"$ref": "forge-game://schemas/approval-verification-context/1.0.0"}
+    },
+    "adapter_plan_request": {"$ref": "forge-game://schemas/adapter-plan-request/1.0.0"},
+    "adapter_plan": {"$ref": "forge-game://schemas/adapter-plan/1.0.0"},
+    "runtime_root": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "requested_at": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/timestamp"},
+    "content_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+  }
+}

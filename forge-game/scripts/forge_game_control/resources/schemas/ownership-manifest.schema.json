@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "forge-game://schemas/ownership-manifest/1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_id", "schema_version", "project_id", "revision", "entries", "updated_at"],
+  "properties": {
+    "schema_id": {"const": "forge-game://schemas/ownership-manifest/1.0.0"},
+    "schema_version": {"const": "1.0.0"},
+    "project_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "revision": {"type": "integer", "minimum": 1},
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["target_path", "ownership"],
+        "properties": {
+          "target_path": {"$ref": "#/$defs/path"},
+          "ownership": {"enum": ["generated", "managed", "user-owned"]}
+        }
+      }
+    },
+    "updated_at": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/timestamp"}
+  },
+  "$defs": {
+    "path": {"type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\)[^\\u0000]+$"}
+  }
+}

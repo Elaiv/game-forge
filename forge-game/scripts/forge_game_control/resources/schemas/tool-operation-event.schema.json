@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "forge-game://schemas/tool-operation-event/1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_id",
+    "schema_version",
+    "execution_id",
+    "sequence",
+    "operation_id",
+    "kind",
+    "state",
+    "exit_code",
+    "error_code",
+    "before_fingerprint",
+    "after_fingerprint",
+    "started_at",
+    "finished_at",
+    "content_hash"
+  ],
+  "properties": {
+    "schema_id": {"const": "forge-game://schemas/tool-operation-event/1.0.0"},
+    "schema_version": {"const": "1.0.0"},
+    "execution_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "sequence": {"type": "integer", "minimum": 1},
+    "operation_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "kind": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "state": {"enum": ["succeeded", "failed", "timed_out"]},
+    "exit_code": {"type": ["integer", "null"]},
+    "error_code": {"type": ["string", "null"]},
+    "before_fingerprint": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+    "after_fingerprint": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+    "started_at": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/timestamp"},
+    "finished_at": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/timestamp"},
+    "content_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+  }
+}

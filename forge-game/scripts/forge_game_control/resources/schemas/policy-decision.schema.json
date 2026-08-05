@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "forge-game://schemas/policy-decision/1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_id",
+    "schema_version",
+    "decision_id",
+    "intent_id",
+    "intent_hash",
+    "context_hash",
+    "workflow_id",
+    "phase_id",
+    "action_id",
+    "action_class",
+    "outcome",
+    "reasons",
+    "normalized_targets",
+    "required_approval_refs",
+    "evaluated_at",
+    "content_hash"
+  ],
+  "properties": {
+    "schema_id": {"const": "forge-game://schemas/policy-decision/1.0.0"},
+    "schema_version": {"const": "1.0.0"},
+    "decision_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "intent_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "intent_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+    "context_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+    "workflow_id": {"enum": ["bootstrap", "feature", "refresh", "release"]},
+    "phase_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "action_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "action_class": {"$ref": "forge-game://schemas/action-intent/1.0.0#/properties/action_class"},
+    "outcome": {"enum": ["allow", "deny", "needs_human", "blocked", "unsupported"]},
+    "reasons": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "message", "target_id"],
+        "properties": {
+          "code": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]+$"},
+          "message": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+          "target_id": {"type": ["string", "null"]}
+        }
+      }
+    },
+    "normalized_targets": {
+      "type": "array",
+      "items": {"$ref": "forge-game://schemas/action-intent/1.0.0#/$defs/target"}
+    },
+    "required_approval_refs": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}
+    },
+    "evaluated_at": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/timestamp"},
+    "content_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+  }
+}

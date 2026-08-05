@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "forge-game://schemas/adapter-descriptor/1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_id",
+    "schema_version",
+    "adapter_id",
+    "adapter_version",
+    "protocol_version",
+    "capability_ids",
+    "action_ids",
+    "operations",
+    "platforms",
+    "content_hash"
+  ],
+  "properties": {
+    "schema_id": {"const": "forge-game://schemas/adapter-descriptor/1.0.0"},
+    "schema_version": {"const": "1.0.0"},
+    "adapter_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "adapter_version": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/semver"},
+    "protocol_version": {"const": "1.0.0"},
+    "capability_ids": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}
+    },
+    "action_ids": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}
+    },
+    "operations": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"enum": ["describe", "health", "plan", "execute", "reconcile"]}
+    },
+    "platforms": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"enum": ["any", "linux", "macos", "windows"]}
+    },
+    "content_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "forge-game://schemas/transaction-event/1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_id",
+    "schema_version",
+    "transaction_id",
+    "sequence",
+    "state",
+    "intent_id",
+    "intent_hash",
+    "target_id",
+    "target_path",
+    "before_hash",
+    "after_hash",
+    "error_code",
+    "recorded_at",
+    "content_hash"
+  ],
+  "properties": {
+    "schema_id": {"const": "forge-game://schemas/transaction-event/1.0.0"},
+    "schema_version": {"const": "1.0.0"},
+    "transaction_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "sequence": {"type": "integer", "minimum": 1},
+    "state": {
+      "enum": [
+        "prepared",
+        "target_applied",
+        "committed",
+        "failed",
+        "rollback_started",
+        "target_rolled_back",
+        "rolled_back",
+        "rollback_failed"
+      ]
+    },
+    "intent_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "intent_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+    "target_id": {"type": ["string", "null"]},
+    "target_path": {"type": ["string", "null"]},
+    "before_hash": {"$ref": "#/$defs/nullableHash"},
+    "after_hash": {"$ref": "#/$defs/nullableHash"},
+    "error_code": {"type": ["string", "null"]},
+    "recorded_at": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/timestamp"},
+    "content_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+  },
+  "$defs": {
+    "nullableHash": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+      ]
+    }
+  }
+}

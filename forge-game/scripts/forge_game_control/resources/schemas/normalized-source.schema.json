@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "forge-game://schemas/normalized-source/1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_id",
+    "schema_version",
+    "source_id",
+    "source_set_id",
+    "source_set_revision",
+    "role",
+    "canonical_location",
+    "media_type",
+    "original_size",
+    "original_hash",
+    "adapter",
+    "normalization_profile",
+    "status",
+    "fragments",
+    "diagnostics",
+    "content_hash"
+  ],
+  "properties": {
+    "schema_id": {"const": "forge-game://schemas/normalized-source/1.0.0"},
+    "schema_version": {"const": "1.0.0"},
+    "source_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "source_set_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "source_set_revision": {"type": "integer", "minimum": 1},
+    "role": {"enum": ["gdd", "roadmap", "supplemental"]},
+    "canonical_location": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "media_type": {"enum": ["text/markdown", "application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"]},
+    "original_size": {"type": "integer", "minimum": 0},
+    "original_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+    "adapter": {"$ref": "forge-game://schemas/source-set-manifest/1.0.0#/$defs/adapter"},
+    "normalization_profile": {"const": "forge-game.normalization.v1"},
+    "status": {"enum": ["valid", "needs_ocr", "unsupported"]},
+    "fragments": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/fragment"}
+    },
+    "diagnostics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "message"],
+        "properties": {
+          "code": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]+$"},
+          "message": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}
+        }
+      }
+    },
+    "content_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+  },
+  "$defs": {
+    "fragment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fragment_id",
+        "ordinal",
+        "kind",
+        "heading_path",
+        "normalized_text_hash",
+        "payload",
+        "coordinates"
+      ],
+      "properties": {
+        "fragment_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+        "ordinal": {"type": "integer", "minimum": 1},
+        "kind": {"enum": ["heading", "paragraph", "list", "table", "code"]},
+        "heading_path": {"type": "array", "items": {"type": "string"}},
+        "normalized_text_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "media_type", "size", "content_hash"],
+          "properties": {
+            "path": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+            "media_type": {"const": "text/plain; charset=utf-8"},
+            "size": {"type": "integer", "minimum": 1},
+            "content_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+          }
+        },
+        "coordinates": {"$ref": "#/$defs/coordinates"}
+      }
+    },
+    "coordinates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format", "block_ordinal"],
+      "properties": {
+        "format": {"enum": ["markdown", "pdf", "docx"]},
+        "block_ordinal": {"type": "integer", "minimum": 1},
+        "line_start": {"type": "integer", "minimum": 1},
+        "line_end": {"type": "integer", "minimum": 1},
+        "page": {"type": "integer", "minimum": 1},
+        "bbox": {
+          "oneOf": [
+            {"type": "null"},
+            {"type": "array", "minItems": 4, "maxItems": 4, "items": {"type": "number"}}
+          ]
+        },
+        "document_part": {"type": "string"},
+        "paragraph": {"type": "integer", "minimum": 1},
+        "table": {"type": "integer", "minimum": 1}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"format": {"const": "markdown"}}},
+          "then": {"required": ["line_start", "line_end"]}
+        },
+        {
+          "if": {"properties": {"format": {"const": "pdf"}}},
+          "then": {"required": ["page", "bbox"]}
+        },
+        {
+          "if": {"properties": {"format": {"const": "docx"}}},
+          "then": {"required": ["document_part"]}
+        }
+      ]
+    }
+  }
+}

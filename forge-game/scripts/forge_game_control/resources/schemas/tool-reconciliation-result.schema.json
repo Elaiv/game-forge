@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "forge-game://schemas/tool-reconciliation-result/1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_id",
+    "schema_version",
+    "reconciliation_id",
+    "request_hash",
+    "intent_id",
+    "intent_hash",
+    "adapter_id",
+    "action_id",
+    "status",
+    "safe_to_retry",
+    "reason_codes",
+    "before_fingerprint",
+    "observed_fingerprint",
+    "event_hashes",
+    "prior_result_hash",
+    "reconciled_at",
+    "content_hash"
+  ],
+  "properties": {
+    "schema_id": {"const": "forge-game://schemas/tool-reconciliation-result/1.0.0"},
+    "schema_version": {"const": "1.0.0"},
+    "reconciliation_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "request_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+    "intent_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "intent_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+    "adapter_id": {"enum": ["git", "build", "test", "unreal_mcp"]},
+    "action_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "status": {"enum": ["not_started", "succeeded", "failed", "partial", "unknown"]},
+    "safe_to_retry": {"type": "boolean"},
+    "reason_codes": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]*$"}
+    },
+    "before_fingerprint": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+    "observed_fingerprint": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+    "event_hashes": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+    },
+    "prior_result_hash": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+      ]
+    },
+    "reconciled_at": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/timestamp"},
+    "content_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+  }
+}

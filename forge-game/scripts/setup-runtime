@@ -1,0 +1,160 @@
+#!/usr/bin/env python3
+"""Create or verify the project-local pinned forge-game runtime."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+import uuid
+from pathlib import Path
+
+
+def _emit(ok: bool, **data: object) -> int:
+    payload = {"ok": ok, "command": "setup-runtime"}
+    payload["data" if ok else "error"] = data
+    sys.stdout.write(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+    return 0 if ok else 5
+
+
+def _runtime_python(root: Path) -> Path:
+    return root / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+
+
+def _runtime_control(root: Path) -> Path:
+    return root / ("Scripts/forge-game-control.exe" if os.name == "nt" else "bin/forge-game-control")
+
+
+def _run(argv: list[str], *, timeout: int) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        argv,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        timeout=timeout,
+        check=False,
+    )
+
+
+def _verify(runtime_root: Path) -> tuple[bool, str]:
+    python = _runtime_python(runtime_root)
+    if not python.is_file():
+        return False, "runtime interpreter is unavailable"
+    try:
+        resolved_python = python.resolve(strict=True)
+    except OSError:
+        return False, "runtime interpreter target is unavailable"
+    if not resolved_python.is_file():
+        return False, "runtime interpreter target is invalid"
+    control = _runtime_control(runtime_root)
+    if control.is_symlink() or not control.is_file():
+        return False, "runtime control entrypoint is unavailable"
+    result = _run(
+        [str(control), "validate-package"],
+        timeout=60,
+    )
+    if result.returncode != 0:
+        return False, "runtime package validation failed"
+    try:
+        response = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return False, "runtime package returned invalid JSON"
+    if not isinstance(response, dict) or response.get("ok") is not True:
+        return False, "runtime package is not healthy"
+    version = response.get("data", {}).get("package_version")
+    if not isinstance(version, str):
+        return False, "runtime package version is unavailable"
+    return True, version
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--project-root", required=True)
+    args = parser.parse_args()
+
+    if sys.version_info[:2] != (3, 12):
+        return _emit(
+            False,
+            code="unsupported_python",
+            message="CPython 3.12 is required to create the forge-game runtime",
+        )
+
+    project_root = Path(args.project_root)
+    if not project_root.is_absolute():
+        return _emit(False, code="invalid_project_root", message="project root must be absolute")
+    if project_root.is_symlink() or not project_root.is_dir():
+        return _emit(False, code="invalid_project_root", message="project root must be a real directory")
+    project_root = project_root.resolve(strict=True)
+
+    skill_root = Path(__file__).resolve().parents[1]
+    lock = skill_root / "requirements.lock"
+    if lock.is_symlink() or not lock.is_file():
+        return _emit(False, code="invalid_package", message="requirements.lock is unavailable")
+
+    forge_root = project_root / ".forge-game"
+    if forge_root.is_symlink():
+        return _emit(False, code="unsafe_target", message=".forge-game cannot be a symlink")
+    forge_root.mkdir(mode=0o755, exist_ok=True)
+    runtime_root = forge_root / "runtime-env"
+    if runtime_root.exists() or runtime_root.is_symlink():
+        if runtime_root.is_symlink() or not runtime_root.is_dir():
+            return _emit(False, code="unsafe_target", message="runtime target is unsafe")
+        healthy, detail = _verify(runtime_root)
+        if not healthy:
+            return _emit(False, code="runtime_mismatch", message=detail)
+        return _emit(True, status="already_ready", package_version=detail, runtime_root=str(runtime_root))
+
+    created = False
+    try:
+        create = _run([sys.executable, "-m", "venv", str(runtime_root)], timeout=120)
+        created = True
+        if create.returncode != 0:
+            raise RuntimeError("venv creation failed")
+        python = _runtime_python(runtime_root)
+        dependencies = _run(
+            [
+                str(python),
+                "-m",
+                "pip",
+                "install",
+                "--require-hashes",
+                "--no-deps",
+                "-r",
+                str(lock),
+            ],
+            timeout=600,
+        )
+        if dependencies.returncode != 0:
+            raise RuntimeError("hash-verified dependency installation failed")
+        package = _run(
+            [str(python), "-m", "pip", "install", "--no-deps", str(skill_root)],
+            timeout=600,
+        )
+        if package.returncode != 0:
+            raise RuntimeError("forge-game package installation failed")
+        healthy, detail = _verify(runtime_root)
+        if not healthy:
+            raise RuntimeError(detail)
+        return _emit(True, status="created", package_version=detail, runtime_root=str(runtime_root))
+    except (OSError, RuntimeError, subprocess.SubprocessError) as exc:
+        recovery_path = None
+        if created and runtime_root.exists() and not runtime_root.is_symlink():
+            recovery = forge_root / f"runtime-env.failed-{uuid.uuid4().hex}"
+            try:
+                runtime_root.rename(recovery)
+                recovery_path = str(recovery)
+            except OSError:
+                recovery_path = str(runtime_root)
+        return _emit(
+            False,
+            code="runtime_setup_failed",
+            message=str(exc),
+            recovery_path=recovery_path,
+        )
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "forge-game://schemas/projection-input/1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_id",
+    "schema_version",
+    "project_id",
+    "project_name",
+    "unreal_engine_version",
+    "target_platforms",
+    "modules",
+    "canonical_commands",
+    "refs",
+    "ci_provider",
+    "lfs_patterns",
+    "variants",
+    "generated_at"
+  ],
+  "properties": {
+    "schema_id": {"const": "forge-game://schemas/projection-input/1.0.0"},
+    "schema_version": {"const": "1.0.0"},
+    "project_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "project_name": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "unreal_engine_version": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "target_platforms": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}
+    },
+    "modules": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "path"],
+        "properties": {
+          "name": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+          "path": {"type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\)[^\\u0000]+$"}
+        }
+      }
+    },
+    "canonical_commands": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["check", "build", "test", "package"],
+      "properties": {
+        "check": {"$ref": "#/$defs/argv"},
+        "build": {"$ref": "#/$defs/argv"},
+        "test": {"$ref": "#/$defs/argv"},
+        "package": {"$ref": "#/$defs/argv"}
+      }
+    },
+    "refs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["gdd", "roadmap", "architecture", "nfr"],
+      "properties": {
+        "gdd": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+        "roadmap": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+        "architecture": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+        "nfr": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}
+      }
+    },
+    "ci_provider": {"enum": ["none", "github"]},
+    "lfs_patterns": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}
+    },
+    "variants": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}
+    },
+    "generated_at": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/timestamp"}
+  },
+  "$defs": {
+    "argv": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}
+    }
+  }
+}

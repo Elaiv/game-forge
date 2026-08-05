@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "forge-game://schemas/adapter-plan-request/1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_id",
+    "schema_version",
+    "request_id",
+    "adapter_id",
+    "action_id",
+    "project_root",
+    "plan_bundle_root",
+    "desired_bundle_root",
+    "selected_target_paths",
+    "planned_at",
+    "content_hash"
+  ],
+  "properties": {
+    "schema_id": {"const": "forge-game://schemas/adapter-plan-request/1.0.0"},
+    "schema_version": {"const": "1.0.0"},
+    "request_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "adapter_id": {"const": "filesystem"},
+    "action_id": {"enum": ["project.files.apply", "project.patch.apply"]},
+    "project_root": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "plan_bundle_root": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "desired_bundle_root": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "selected_target_paths": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/path"}
+    },
+    "planned_at": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/timestamp"},
+    "content_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+  },
+  "$defs": {
+    "path": {"type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\)[^\\u0000]+$"}
+  }
+}

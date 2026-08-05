@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "forge-game://schemas/template-manifest/1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_id",
+    "schema_version",
+    "template_set_id",
+    "template_set_version",
+    "input_schema_id",
+    "supported_variants",
+    "templates",
+    "content_hash"
+  ],
+  "properties": {
+    "schema_id": {"const": "forge-game://schemas/template-manifest/1.0.0"},
+    "schema_version": {"const": "1.0.0"},
+    "template_set_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "template_set_version": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/semver"},
+    "input_schema_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "supported_variants": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}
+    },
+    "templates": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/template"}
+    },
+    "content_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+  },
+  "$defs": {
+    "template": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "template_id",
+        "version",
+        "source",
+        "target",
+        "ownership",
+        "renderer",
+        "required_inputs",
+        "constants",
+        "variants",
+        "validations",
+        "source_hash"
+      ],
+      "properties": {
+        "template_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"},
+        "version": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/semver"},
+        "source": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$"},
+        "target": {"type": "string", "minLength": 1},
+        "ownership": {"enum": ["generated", "managed", "user-owned"]},
+        "renderer": {"enum": ["exact-copy", "restricted-text", "json", "toml", "ini", "git-lines", "ci"]},
+        "required_inputs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"}
+        },
+        "constants": {"type": "object", "additionalProperties": {"type": "string"}},
+        "variants": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}
+        },
+        "validations": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}
+        },
+        "source_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+        "condition": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["field", "equals"],
+          "properties": {
+            "field": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+            "equals": {"type": ["string", "boolean"]}
+          }
+        },
+        "repeat": {"enum": ["modules", "roles"]},
+        "executable": {"type": "boolean"}
+      }
+    }
+  }
+}

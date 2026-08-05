@@ -1,0 +1,8 @@
+# {{text:project_name}} repository guidance
+
+- Treat `{{text:gdd_ref}}`, `{{text:roadmap_ref}}`, `{{text:architecture_ref}}`, and `{{text:nfr_ref}}` as canonical product and architecture sources.
+- Run project checks through `.forge-game/bin/run-command <check|build|test|package>`; command arguments come from `.forge-game/manifests/commands.json`.
+- Keep one feature ID per implementation run and preserve traceability to requirements, tests, and evidence.
+- Do not edit files classified as `generated`; propose changes through forge-game refresh/reconciliation.
+- Do not overwrite existing instructions or project files when ownership is unclear.
+- Use the project-local role skills under `.agents/skills/` for specialized analysis, design, planning, implementation, review, test, and verification work.

@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "forge-game://schemas/action-catalog/1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_id", "schema_version", "catalog_version", "actions"],
+  "properties": {
+    "schema_id": {"const": "forge-game://schemas/action-catalog/1.0.0"},
+    "schema_version": {"const": "1.0.0"},
+    "catalog_version": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/semver"},
+    "actions": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {"$ref": "#/$defs/action"}
+    }
+  },
+  "$defs": {
+    "action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "action_id",
+        "action_class",
+        "adapter_id",
+        "side_effect",
+        "approval_mode",
+        "capability_any_of",
+        "required_guard_fact_ids",
+        "allowed_target_kinds",
+        "allowed_command_ids"
+      ],
+      "properties": {
+        "action_id": {"type": "string", "minLength": 1},
+        "action_class": {"$ref": "forge-game://schemas/action-intent/1.0.0#/properties/action_class"},
+        "adapter_id": {"type": "string", "minLength": 1},
+        "side_effect": {"type": "boolean"},
+        "approval_mode": {"enum": ["none", "scoped"]},
+        "capability_any_of": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {"type": "string", "minLength": 1}
+          }
+        },
+        "required_guard_fact_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        },
+        "allowed_target_kinds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"enum": ["path", "url", "git_ref", "lfs_path", "unreal_asset", "package", "release"]}
+        },
+        "allowed_command_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "forge-game://schemas/action-grant/1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_id",
+    "schema_version",
+    "grant_id",
+    "intent_id",
+    "intent_hash",
+    "adapter_id",
+    "action_id",
+    "adapter_plan_id",
+    "adapter_plan_hash",
+    "project_root",
+    "provider_id",
+    "host_tool_names",
+    "tool_input",
+    "tool_input_hash",
+    "target_hashes",
+    "approval_hashes",
+    "host_capability_report_hash",
+    "issued_at",
+    "expires_at",
+    "content_hash"
+  ],
+  "properties": {
+    "schema_id": {"const": "forge-game://schemas/action-grant/1.0.0"},
+    "schema_version": {"const": "1.0.0"},
+    "grant_id": {"type": "string", "pattern": "^unreal-grant-[0-9a-f]{24}$"},
+    "intent_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "intent_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+    "adapter_id": {"const": "unreal_mcp"},
+    "action_id": {"enum": ["unreal.query", "unreal.mutate"]},
+    "adapter_plan_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+    "adapter_plan_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+    "project_root": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "provider_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "host_tool_names": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^mcp__unreal[-_]mcp__call_tool$"}
+    },
+    "tool_input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["toolset_name", "tool_name", "arguments"],
+      "properties": {
+        "toolset_name": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+        "tool_name": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+        "arguments": {"type": "object"}
+      }
+    },
+    "tool_input_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+    "target_hashes": {"$ref": "forge-game://schemas/action-result/1.0.0#/$defs/hashMap"},
+    "approval_hashes": {
+      "type": "object",
+      "additionalProperties": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+    },
+    "host_capability_report_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+    "issued_at": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/timestamp"},
+    "expires_at": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/timestamp"},
+    "content_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+  }
+}

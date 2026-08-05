@@ -1,0 +1,29 @@
+[features]
+hooks = true
+
+[mcp_servers.unreal-mcp]
+url = "http://127.0.0.1:8000/mcp"
+
+[agents]
+enabled = true
+max_concurrent_threads_per_session = 7
+
+{{text:agent_declarations}}
+
+[[hooks.PreToolUse]]
+matcher = "^(Bash|apply_patch|Edit|Write|mcp__.*)$"
+
+[[hooks.PreToolUse.hooks]]
+type = "command"
+command = '".forge-game/runtime-env/bin/python" ".codex/hooks/forge_game_policy.py"'
+timeout = 30
+statusMessage = "Checking forge-game project policy"
+
+[[hooks.PostToolUse]]
+matcher = "^mcp__unreal[-_]mcp__(call_tool|list_toolsets|describe_toolset)$"
+
+[[hooks.PostToolUse.hooks]]
+type = "command"
+command = '".forge-game/runtime-env/bin/python" ".codex/hooks/forge_game_policy.py"'
+timeout = 30
+statusMessage = "Recording forge-game Unreal MCP result"

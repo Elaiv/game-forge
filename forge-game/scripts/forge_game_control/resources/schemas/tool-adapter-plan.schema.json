@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "forge-game://schemas/tool-adapter-plan/1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_id",
+    "schema_version",
+    "adapter_plan_id",
+    "request_hash",
+    "adapter_id",
+    "action_id",
+    "status",
+    "subject_hashes",
+    "before_fingerprint",
+    "operations",
+    "reason_codes",
+    "details",
+    "planned_at",
+    "content_hash"
+  ],
+  "properties": {
+    "schema_id": {"const": "forge-game://schemas/tool-adapter-plan/1.0.0"},
+    "schema_version": {"const": "1.0.0"},
+    "adapter_plan_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+    "request_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+    "adapter_id": {"enum": ["git", "git_lfs", "build", "test", "unreal_mcp"]},
+    "action_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "status": {"enum": ["ready", "blocked", "noop"]},
+    "subject_hashes": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+    },
+    "before_fingerprint": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+    "operations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["operation_id", "kind", "arguments"],
+        "properties": {
+          "operation_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+          "kind": {
+            "enum": [
+              "git_init",
+              "git_lfs_install_local",
+              "git_add",
+              "git_commit",
+              "git_worktree_add",
+              "git_merge",
+              "git_lfs_lock",
+              "git_lfs_unlock",
+              "canonical_command",
+              "unreal_mcp_call"
+            ]
+          },
+          "arguments": {
+            "type": "array",
+            "minItems": 1,
+            "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}
+          }
+        }
+      }
+    },
+    "reason_codes": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]*$"}
+    },
+    "details": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["project_root", "manifest_path", "provider_id", "provider_profile_hash", "host_tool_names"],
+      "properties": {
+        "project_root": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+        "manifest_path": {"type": ["string", "null"]},
+        "provider_id": {"type": ["string", "null"]},
+        "provider_profile_hash": {
+          "oneOf": [
+            {"type": "null"},
+            {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+          ]
+        },
+        "host_tool_names": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}
+        }
+      }
+    },
+    "planned_at": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/timestamp"},
+    "content_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+  }
+}

@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "forge-game://schemas/source-diff/1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_id",
+    "schema_version",
+    "base",
+    "current",
+    "algorithm",
+    "changes",
+    "summary",
+    "generated_at",
+    "content_hash"
+  ],
+  "properties": {
+    "schema_id": {"const": "forge-game://schemas/source-diff/1.0.0"},
+    "schema_version": {"const": "1.0.0"},
+    "base": {"$ref": "#/$defs/sourceSetRef"},
+    "current": {"$ref": "#/$defs/sourceSetRef"},
+    "algorithm": {"const": "forge-game.fragment-diff.v1"},
+    "changes": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/change"}
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unchanged", "changed", "moved", "added", "removed", "ambiguous"],
+      "properties": {
+        "unchanged": {"type": "integer", "minimum": 0},
+        "changed": {"type": "integer", "minimum": 0},
+        "moved": {"type": "integer", "minimum": 0},
+        "added": {"type": "integer", "minimum": 0},
+        "removed": {"type": "integer", "minimum": 0},
+        "ambiguous": {"type": "integer", "minimum": 0}
+      }
+    },
+    "generated_at": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/timestamp"},
+    "content_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+  },
+  "$defs": {
+    "sourceSetRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_set_id", "revision", "content_hash"],
+      "properties": {
+        "source_set_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+        "revision": {"type": "integer", "minimum": 1},
+        "content_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+      }
+    },
+    "change": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["change_id", "source_id", "classification", "base_fragment_ids", "current_fragment_ids", "match_kind", "reason"],
+      "properties": {
+        "change_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+        "source_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+        "classification": {"enum": ["unchanged", "changed", "moved", "added", "removed", "ambiguous"]},
+        "base_fragment_ids": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+        "current_fragment_ids": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+        "match_kind": {"enum": ["stable_anchor", "exact_hash", "neighbor_similarity", "none", "ambiguous"]},
+        "reason": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}
+      }
+    }
+  }
+}

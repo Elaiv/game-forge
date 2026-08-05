@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "forge-game://schemas/projection-manifest/1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_id",
+    "schema_version",
+    "project_id",
+    "revision",
+    "template_set_version",
+    "input_hash",
+    "entries",
+    "updated_at"
+  ],
+  "properties": {
+    "schema_id": {"const": "forge-game://schemas/projection-manifest/1.0.0"},
+    "schema_version": {"const": "1.0.0"},
+    "project_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "revision": {"type": "integer", "minimum": 1},
+    "template_set_version": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/semver"},
+    "input_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "target_path",
+          "ownership",
+          "template_id",
+          "template_version",
+          "template_input_hash",
+          "last_applied_hash",
+          "baseline_hash",
+          "baseline_path",
+          "merge_driver"
+        ],
+        "properties": {
+          "target_path": {"$ref": "#/$defs/path"},
+          "ownership": {"enum": ["generated", "managed", "user-owned"]},
+          "template_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+          "template_version": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/semver"},
+          "template_input_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+          "last_applied_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+          "baseline_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+          "baseline_path": {"$ref": "#/$defs/path"},
+          "merge_driver": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}
+        }
+      }
+    },
+    "updated_at": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/timestamp"}
+  },
+  "$defs": {
+    "path": {"type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\)[^\\u0000]+$"}
+  }
+}

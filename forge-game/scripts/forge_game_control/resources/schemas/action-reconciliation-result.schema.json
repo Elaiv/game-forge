@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "forge-game://schemas/action-reconciliation-result/1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_id",
+    "schema_version",
+    "reconciliation_id",
+    "request_hash",
+    "intent_id",
+    "intent_hash",
+    "adapter_id",
+    "status",
+    "safe_to_retry",
+    "reason_codes",
+    "event_hashes",
+    "target_observations",
+    "prior_result",
+    "reconciled_at",
+    "content_hash"
+  ],
+  "properties": {
+    "schema_id": {"const": "forge-game://schemas/action-reconciliation-result/1.0.0"},
+    "schema_version": {"const": "1.0.0"},
+    "reconciliation_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "request_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+    "intent_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "intent_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+    "adapter_id": {"const": "filesystem"},
+    "status": {"enum": ["not_started", "succeeded", "rolled_back", "partial", "unknown"]},
+    "safe_to_retry": {"type": "boolean"},
+    "reason_codes": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]*$"}
+    },
+    "event_hashes": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+    },
+    "target_observations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["target_id", "target_path", "expected_hash", "result_hash", "observed_hash", "state"],
+        "properties": {
+          "target_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+          "target_path": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+          "expected_hash": {"$ref": "#/$defs/nullableHash"},
+          "result_hash": {"$ref": "#/$defs/nullableHash"},
+          "observed_hash": {"$ref": "#/$defs/nullableHash"},
+          "state": {"enum": ["before", "result", "drift"]}
+        }
+      }
+    },
+    "prior_result": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["result_id", "content_hash", "outcome", "rollback_status"],
+          "properties": {
+            "result_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+            "content_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+            "outcome": {"enum": ["succeeded", "failed", "partial", "unknown", "cancelled"]},
+            "rollback_status": {"enum": ["not_needed", "not_attempted", "succeeded", "failed", "indeterminate"]}
+          }
+        }
+      ]
+    },
+    "reconciled_at": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/timestamp"},
+    "content_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+  },
+  "$defs": {
+    "nullableHash": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+      ]
+    }
+  }
+}

@@ -1,0 +1,205 @@
+{
+  "schema_id": "forge-game://schemas/action-catalog/1.0.0",
+  "schema_version": "1.0.0",
+  "catalog_version": "1.0.0",
+  "actions": {
+    "build.configure": {
+      "action_id": "build.configure",
+      "action_class": "project_file_mutation",
+      "adapter_id": "filesystem",
+      "side_effect": true,
+      "approval_mode": "scoped",
+      "capability_any_of": [["build.configure"]],
+      "required_guard_fact_ids": ["ownership.allowed"],
+      "allowed_target_kinds": ["path"],
+      "allowed_command_ids": []
+    },
+    "build.package": {
+      "action_id": "build.package",
+      "action_class": "process_execution",
+      "adapter_id": "build",
+      "side_effect": true,
+      "approval_mode": "scoped",
+      "capability_any_of": [["build.package"]],
+      "required_guard_fact_ids": ["command.registered", "release.target.allowed"],
+      "allowed_target_kinds": ["path", "release"],
+      "allowed_command_ids": ["build.package"]
+    },
+    "build.preflight": {
+      "action_id": "build.preflight",
+      "action_class": "process_execution",
+      "adapter_id": "build",
+      "side_effect": true,
+      "approval_mode": "scoped",
+      "capability_any_of": [["build.preflight"], ["build.run"]],
+      "required_guard_fact_ids": ["command.registered"],
+      "allowed_target_kinds": ["path"],
+      "allowed_command_ids": ["build.preflight"]
+    },
+    "git.commit": {
+      "action_id": "git.commit",
+      "action_class": "git_mutation",
+      "adapter_id": "git",
+      "side_effect": true,
+      "approval_mode": "scoped",
+      "capability_any_of": [["git.write"]],
+      "required_guard_fact_ids": ["git.target.allowed"],
+      "allowed_target_kinds": ["path", "git_ref"],
+      "allowed_command_ids": []
+    },
+    "git.configure": {
+      "action_id": "git.configure",
+      "action_class": "git_mutation",
+      "adapter_id": "git",
+      "side_effect": true,
+      "approval_mode": "scoped",
+      "capability_any_of": [["git.write"]],
+      "required_guard_fact_ids": ["git.target.allowed"],
+      "allowed_target_kinds": ["path"],
+      "allowed_command_ids": []
+    },
+    "git.lfs.lock": {
+      "action_id": "git.lfs.lock",
+      "action_class": "lfs_mutation",
+      "adapter_id": "git_lfs",
+      "side_effect": true,
+      "approval_mode": "scoped",
+      "capability_any_of": [["git_lfs.lock"]],
+      "required_guard_fact_ids": ["git.target.allowed", "lfs.target.allowed"],
+      "allowed_target_kinds": ["lfs_path"],
+      "allowed_command_ids": []
+    },
+    "git.lfs.unlock": {
+      "action_id": "git.lfs.unlock",
+      "action_class": "lfs_mutation",
+      "adapter_id": "git_lfs",
+      "side_effect": true,
+      "approval_mode": "scoped",
+      "capability_any_of": [["git_lfs.unlock"]],
+      "required_guard_fact_ids": ["git.target.allowed", "lfs.target.allowed"],
+      "allowed_target_kinds": ["lfs_path"],
+      "allowed_command_ids": []
+    },
+    "git.merge": {
+      "action_id": "git.merge",
+      "action_class": "git_mutation",
+      "adapter_id": "git",
+      "side_effect": true,
+      "approval_mode": "scoped",
+      "capability_any_of": [["git.write"]],
+      "required_guard_fact_ids": ["git.target.allowed"],
+      "allowed_target_kinds": ["git_ref"],
+      "allowed_command_ids": []
+    },
+    "git.push": {
+      "action_id": "git.push",
+      "action_class": "git_mutation",
+      "adapter_id": "git",
+      "side_effect": true,
+      "approval_mode": "scoped",
+      "capability_any_of": [["git.write"]],
+      "required_guard_fact_ids": ["git.target.allowed"],
+      "allowed_target_kinds": ["git_ref"],
+      "allowed_command_ids": []
+    },
+    "git.worktree.create": {
+      "action_id": "git.worktree.create",
+      "action_class": "git_mutation",
+      "adapter_id": "git",
+      "side_effect": true,
+      "approval_mode": "scoped",
+      "capability_any_of": [["git.write"]],
+      "required_guard_fact_ids": ["git.target.allowed"],
+      "allowed_target_kinds": ["path", "git_ref"],
+      "allowed_command_ids": []
+    },
+    "network.fetch": {
+      "action_id": "network.fetch",
+      "action_class": "network_fetch",
+      "adapter_id": "network",
+      "side_effect": true,
+      "approval_mode": "scoped",
+      "capability_any_of": [["research.fetch"]],
+      "required_guard_fact_ids": ["network.source.allowed"],
+      "allowed_target_kinds": ["url"],
+      "allowed_command_ids": []
+    },
+    "project.files.apply": {
+      "action_id": "project.files.apply",
+      "action_class": "project_file_mutation",
+      "adapter_id": "filesystem",
+      "side_effect": true,
+      "approval_mode": "scoped",
+      "capability_any_of": [["filesystem.write"]],
+      "required_guard_fact_ids": ["ownership.allowed", "reconciliation.approved"],
+      "allowed_target_kinds": ["path"],
+      "allowed_command_ids": []
+    },
+    "project.patch.apply": {
+      "action_id": "project.patch.apply",
+      "action_class": "project_file_mutation",
+      "adapter_id": "filesystem",
+      "side_effect": true,
+      "approval_mode": "scoped",
+      "capability_any_of": [["filesystem.write"]],
+      "required_guard_fact_ids": ["ownership.allowed"],
+      "allowed_target_kinds": ["path"],
+      "allowed_command_ids": []
+    },
+    "project.records.publish": {
+      "action_id": "project.records.publish",
+      "action_class": "project_file_mutation",
+      "adapter_id": "filesystem",
+      "side_effect": true,
+      "approval_mode": "scoped",
+      "capability_any_of": [["filesystem.write"]],
+      "required_guard_fact_ids": ["ownership.allowed"],
+      "allowed_target_kinds": ["path"],
+      "allowed_command_ids": []
+    },
+    "runtime.cleanup": {
+      "action_id": "runtime.cleanup",
+      "action_class": "runtime_mutation",
+      "adapter_id": "runtime",
+      "side_effect": true,
+      "approval_mode": "scoped",
+      "capability_any_of": [["git.write"]],
+      "required_guard_fact_ids": ["runtime.target.allowed"],
+      "allowed_target_kinds": ["path"],
+      "allowed_command_ids": []
+    },
+    "test.gated.run": {
+      "action_id": "test.gated.run",
+      "action_class": "process_execution",
+      "adapter_id": "test",
+      "side_effect": true,
+      "approval_mode": "scoped",
+      "capability_any_of": [["build.test"]],
+      "required_guard_fact_ids": ["command.registered"],
+      "allowed_target_kinds": ["path"],
+      "allowed_command_ids": ["test.gated.run"]
+    },
+    "unreal.mutate": {
+      "action_id": "unreal.mutate",
+      "action_class": "unreal_asset_mutation",
+      "adapter_id": "unreal_mcp",
+      "side_effect": true,
+      "approval_mode": "scoped",
+      "capability_any_of": [["unreal_mcp.write"]],
+      "required_guard_fact_ids": ["unreal.target.allowed"],
+      "allowed_target_kinds": ["unreal_asset"],
+      "allowed_command_ids": []
+    },
+    "unreal.query": {
+      "action_id": "unreal.query",
+      "action_class": "unreal_query",
+      "adapter_id": "unreal_mcp",
+      "side_effect": false,
+      "approval_mode": "none",
+      "capability_any_of": [["unreal_mcp.read"]],
+      "required_guard_fact_ids": [],
+      "allowed_target_kinds": ["unreal_asset"],
+      "allowed_command_ids": []
+    }
+  }
+}

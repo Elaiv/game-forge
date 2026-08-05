@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "forge-game://schemas/start-run-request/1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_id", "schema_version", "entrypoint", "project_root", "inputs"],
+  "properties": {
+    "schema_id": {"const": "forge-game://schemas/start-run-request/1.0.0"},
+    "schema_version": {"const": "1.0.0"},
+    "entrypoint": {"enum": ["bootstrap", "feature", "refresh", "release"]},
+    "project_root": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "resume_run_id": {"type": ["string", "null"]},
+    "inputs": {"type": "object"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"entrypoint": {"const": "bootstrap"}}},
+      "then": {
+        "properties": {
+          "inputs": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["gdd_sources", "roadmap_sources"],
+            "properties": {
+              "gdd_sources": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+              "roadmap_sources": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+              "target_platforms": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {"properties": {"entrypoint": {"const": "feature"}}},
+      "then": {
+        "properties": {
+          "inputs": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["feature_id"],
+            "properties": {
+              "feature_id": {"type": "string", "minLength": 1}
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {"properties": {"entrypoint": {"const": "refresh"}}},
+      "then": {
+        "properties": {
+          "inputs": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "target_forge_game_version": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/semver"},
+              "source_locations": {"type": "array", "items": {"type": "string", "minLength": 1}}
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {"properties": {"entrypoint": {"const": "release"}}},
+      "then": {
+        "properties": {
+          "inputs": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "release_scope": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+            }
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "forge-game://schemas/run-start-record/1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_id",
+    "schema_version",
+    "run_id",
+    "request",
+    "project_state_base",
+    "read_set",
+    "write_set",
+    "created_at",
+    "content_hash"
+  ],
+  "properties": {
+    "schema_id": {"const": "forge-game://schemas/run-start-record/1.0.0"},
+    "schema_version": {"const": "1.0.0"},
+    "run_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "request": {"$ref": "forge-game://schemas/start-run-request/1.0.0"},
+    "project_state_base": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["revision", "content_hash"],
+      "properties": {
+        "revision": {"type": "integer", "minimum": 0},
+        "content_hash": {
+          "oneOf": [
+            {"type": "null"},
+            {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+          ]
+        }
+      }
+    },
+    "read_set": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+    "write_set": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+    "created_at": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/timestamp"},
+    "content_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+  }
+}

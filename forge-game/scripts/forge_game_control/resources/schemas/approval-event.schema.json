@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "forge-game://schemas/approval-event/1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_id",
+    "schema_version",
+    "event_id",
+    "approval_id",
+    "approval_hash",
+    "event_type",
+    "intent_hash",
+    "action_result_hash",
+    "reason_code",
+    "created_at",
+    "actor",
+    "content_hash"
+  ],
+  "properties": {
+    "schema_id": {"const": "forge-game://schemas/approval-event/1.0.0"},
+    "schema_version": {"const": "1.0.0"},
+    "event_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "approval_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "approval_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+    "event_type": {"enum": ["consumed", "invalidated"]},
+    "intent_hash": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+      ]
+    },
+    "action_result_hash": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+      ]
+    },
+    "reason_code": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]+$"},
+    "created_at": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/timestamp"},
+    "actor": {"enum": ["control_plane", "orchestrator"]},
+    "content_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"event_type": {"const": "consumed"}}},
+      "then": {
+        "properties": {
+          "intent_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+          "action_result_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+        }
+      }
+    }
+  ]
+}

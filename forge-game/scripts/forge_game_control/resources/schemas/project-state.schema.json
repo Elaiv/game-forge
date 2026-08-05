@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "forge-game://schemas/project-state/1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_id",
+    "schema_version",
+    "project_id",
+    "revision",
+    "previous_content_hash",
+    "forge_game_version",
+    "workflow_versions",
+    "template_version",
+    "unreal",
+    "lifecycle_status",
+    "source_baseline",
+    "refs",
+    "canonical_commands",
+    "feature_statuses",
+    "updated_at"
+  ],
+  "properties": {
+    "schema_id": {"const": "forge-game://schemas/project-state/1.0.0"},
+    "schema_version": {"const": "1.0.0"},
+    "project_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "revision": {"type": "integer", "minimum": 1},
+    "previous_content_hash": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+      ]
+    },
+    "forge_game_version": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/semver"},
+    "workflow_versions": {
+      "type": "object",
+      "additionalProperties": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/semver"}
+    },
+    "template_version": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/semver"},
+    "unreal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["engine_version", "toolchain_fingerprint"],
+      "properties": {
+        "engine_version": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+        "toolchain_fingerprint": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}
+      }
+    },
+    "lifecycle_status": {
+      "enum": ["uninitialized", "bootstrap_planned", "bootstrap_ready", "active", "release_blocked", "released"]
+    },
+    "source_baseline": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "forge-game://schemas/common/1.0.0#/$defs/artifactRef"}
+      ]
+    },
+    "refs": {
+      "type": "object",
+      "additionalProperties": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/artifactRef"}
+    },
+    "canonical_commands": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}
+    },
+    "feature_statuses": {
+      "type": "object",
+      "additionalProperties": {
+        "enum": ["planned", "blocked", "in_progress", "implemented_unverified", "release_ready", "rejected"]
+      }
+    },
+    "updated_at": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/timestamp"}
+  }
+}

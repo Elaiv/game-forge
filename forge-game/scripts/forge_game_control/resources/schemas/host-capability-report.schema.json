@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "forge-game://schemas/host-capability-report/1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_id",
+    "schema_version",
+    "report_id",
+    "run_id",
+    "captured_at",
+    "surface",
+    "permission_mode",
+    "filesystem",
+    "network",
+    "hooks",
+    "capabilities",
+    "adapters",
+    "status",
+    "reasons",
+    "content_hash"
+  ],
+  "properties": {
+    "schema_id": {"const": "forge-game://schemas/host-capability-report/1.0.0"},
+    "schema_version": {"const": "1.0.0"},
+    "report_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "run_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "captured_at": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/timestamp"},
+    "surface": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+        "version": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}
+      }
+    },
+    "permission_mode": {"enum": ["read_only", "workspace_write", "sandboxed_escalation", "danger_full_access", "unknown"]},
+    "filesystem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["read_roots", "write_roots", "protected_paths"],
+      "properties": {
+        "read_roots": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+        "write_roots": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+        "protected_paths": {"type": "array", "uniqueItems": true, "items": {"type": "string"}}
+      }
+    },
+    "network": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "allowed_domains"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "allowed_domains": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "hooks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "side_effect_coverage", "trusted_hashes"],
+      "properties": {
+        "state": {"enum": ["enabled_trusted", "enabled_untrusted", "disabled", "unavailable"]},
+        "side_effect_coverage": {"enum": ["enforced", "partial", "none", "unknown"]},
+        "trusted_hashes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+        }
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": {"enum": ["available", "unavailable", "indeterminate"]}
+    },
+    "adapters": {
+      "type": "object",
+      "additionalProperties": {"enum": ["healthy", "unhealthy", "unsupported", "indeterminate"]}
+    },
+    "status": {"enum": ["satisfied", "read_only_only", "unsupported"]},
+    "reasons": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}
+    },
+    "content_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+  }
+}

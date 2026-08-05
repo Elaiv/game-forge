@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "forge-game://schemas/desired-projection/1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_id",
+    "schema_version",
+    "projection_id",
+    "template_set_id",
+    "template_set_version",
+    "template_manifest_hash",
+    "input_hash",
+    "generated_at",
+    "files"
+  ],
+  "properties": {
+    "schema_id": {"const": "forge-game://schemas/desired-projection/1.0.0"},
+    "schema_version": {"const": "1.0.0"},
+    "projection_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+    "template_set_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "template_set_version": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/semver"},
+    "template_manifest_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+    "input_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+    "generated_at": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/timestamp"},
+    "files": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "target_path",
+          "ownership",
+          "renderer",
+          "template_id",
+          "template_version",
+          "source_hash",
+          "desired_hash",
+          "staged_relative_path",
+          "mode",
+          "content_type"
+        ],
+        "properties": {
+          "target_path": {"$ref": "#/$defs/path"},
+          "ownership": {"enum": ["generated", "managed", "user-owned"]},
+          "renderer": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+          "template_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+          "template_version": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/semver"},
+          "source_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+          "desired_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+          "staged_relative_path": {"$ref": "#/$defs/path"},
+          "mode": {"enum": [420, 493]},
+          "content_type": {"enum": ["text", "binary"]}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "path": {"type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\)[^\\u0000]+$"}
+  }
+}

@@ -1,0 +1,28 @@
+---
+name: {{text:role_slug}}
+description: {{text:role_description}}
+---
+
+# {{text:role_title}}
+
+Work only within the assigned feature or verification scope for this project.
+
+## Inputs
+
+{{text:role_inputs}}
+
+## Outputs
+
+{{text:role_outputs}}
+
+## Project constraints
+
+- Read canonical product sources from `{{text:gdd_ref}}` and `{{text:roadmap_ref}}`.
+- Read architecture and non-functional constraints from `{{text:architecture_ref}}` and `{{text:nfr_ref}}`.
+- Use canonical project commands through `.forge-game/bin/run-command`.
+- Preserve module boundaries and existing ownership classifications.
+- Return evidence and unresolved risks; never approve your own output.
+
+## Success
+
+{{text:role_success}}

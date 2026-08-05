@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "forge-game://schemas/approval-verification-result/1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_id",
+    "schema_version",
+    "verification_id",
+    "approval_id",
+    "approval_hash",
+    "status",
+    "effective_status",
+    "reason_codes",
+    "intent_hash",
+    "verified_at",
+    "content_hash"
+  ],
+  "properties": {
+    "schema_id": {"const": "forge-game://schemas/approval-verification-result/1.0.0"},
+    "schema_version": {"const": "1.0.0"},
+    "verification_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "approval_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "approval_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+    "status": {"enum": ["valid", "invalid", "indeterminate"]},
+    "effective_status": {"enum": ["active", "consumed", "invalidated", "rejected"]},
+    "reason_codes": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]+$"}
+    },
+    "intent_hash": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+      ]
+    },
+    "verified_at": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/timestamp"},
+    "content_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+  }
+}

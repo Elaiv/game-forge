@@ -1,0 +1,4 @@
+interface:
+  display_name: "Forge Game"
+  short_description: "Govern Unreal development from GDD to release"
+  default_prompt: "Use $forge-game to govern an Unreal project through bootstrap, one feature, refresh, or release readiness."

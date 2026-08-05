@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "forge-game://schemas/run-state/1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_id",
+    "schema_version",
+    "run_id",
+    "revision",
+    "previous_content_hash",
+    "workflow",
+    "status",
+    "current_phase",
+    "attempt",
+    "project_state_base",
+    "input_refs",
+    "artifact_refs",
+    "approval_refs",
+    "action_refs",
+    "workspace",
+    "lfs_locks",
+    "read_set",
+    "write_set",
+    "pending_gate",
+    "last_checkpoint",
+    "failure",
+    "next_safe_action"
+  ],
+  "properties": {
+    "schema_id": {"const": "forge-game://schemas/run-state/1.0.0"},
+    "schema_version": {"const": "1.0.0"},
+    "run_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "revision": {"type": "integer", "minimum": 1},
+    "previous_content_hash": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+      ]
+    },
+    "workflow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workflow_id", "version"],
+      "properties": {
+        "workflow_id": {"enum": ["bootstrap", "feature", "refresh", "release"]},
+        "version": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/semver"}
+      }
+    },
+    "status": {"enum": ["ready", "running", "waiting_human", "blocked", "failed", "completed", "cancelled"]},
+    "current_phase": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "attempt": {"type": "integer", "minimum": 1},
+    "project_state_base": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["revision", "content_hash"],
+      "properties": {
+        "revision": {"type": "integer", "minimum": 0},
+        "content_hash": {
+          "oneOf": [
+            {"type": "null"},
+            {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+          ]
+        }
+      }
+    },
+    "input_refs": {"type": "array", "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/artifactRef"}},
+    "artifact_refs": {"type": "array", "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/artifactRef"}},
+    "approval_refs": {"type": "array", "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}},
+    "action_refs": {"type": "array", "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}},
+    "workspace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["project_root", "branch", "worktree"],
+      "properties": {
+        "project_root": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+        "branch": {"type": ["string", "null"]},
+        "worktree": {"type": ["string", "null"]}
+      }
+    },
+    "lfs_locks": {"type": "array", "items": {"type": "object"}},
+    "read_set": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+    "write_set": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+    "pending_gate": {"type": ["object", "null"]},
+    "last_checkpoint": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/timestamp"},
+    "failure": {"type": ["object", "null"]},
+    "next_safe_action": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}
+  }
+}

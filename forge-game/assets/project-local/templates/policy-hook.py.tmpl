@@ -1,0 +1,60 @@
+#!/usr/bin/env python3
+"""Fail-closed bridge from Codex PreToolUse to the project policy gateway."""
+
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+
+def deny(reason: str) -> int:
+    print(json.dumps({
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": reason,
+        }
+    }))
+    return 0
+
+
+def main() -> int:
+    raw = sys.stdin.buffer.read()
+    try:
+        event = json.loads(raw)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return deny("forge-game policy hook received invalid JSON")
+    if not isinstance(event, dict):
+        return deny("forge-game policy hook requires a JSON object")
+
+    root = Path(__file__).resolve().parents[2]
+    gateway = root / ".forge-game" / "bin" / "policy-check"
+    if not gateway.is_file() or gateway.is_symlink():
+        return deny("forge-game policy gateway is unavailable; mutating tool call blocked")
+    try:
+        result = subprocess.run(
+            [sys.executable, str(gateway)],
+            input=raw,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=25,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return deny("forge-game policy gateway failed; mutating tool call blocked")
+    if result.returncode != 0:
+        return deny("forge-game policy gateway denied or failed the tool call")
+    try:
+        response = json.loads(result.stdout)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return deny("forge-game policy gateway returned invalid JSON")
+    if not isinstance(response, dict):
+        return deny("forge-game policy gateway returned an invalid response")
+    print(json.dumps(response, separators=(",", ":")))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

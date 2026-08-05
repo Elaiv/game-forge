@@ -1,0 +1,18 @@
+name: forge-game checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+      - name: Check
+        run: .forge-game/bin/run-command check
+      - name: Test
+        run: .forge-game/bin/run-command test

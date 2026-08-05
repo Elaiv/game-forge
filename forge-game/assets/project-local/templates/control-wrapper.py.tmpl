@@ -1,0 +1,31 @@
+#!/usr/bin/env python3
+"""Run the installed forge-game control plane pinned by ProjectState."""
+
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+import forge_game_control
+from forge_game_control.cli import main
+
+
+def run() -> int:
+    root = Path(__file__).resolve().parents[2]
+    try:
+        state = json.loads(
+            (root / ".forge-game" / "project-state.json").read_text(encoding="utf-8")
+        )
+        expected = state["forge_game_version"]
+    except (OSError, KeyError, TypeError, json.JSONDecodeError):
+        print("forge-game ProjectState is invalid", file=sys.stderr)
+        return 3
+    if expected != forge_game_control.__version__:
+        print("installed forge-game version does not match ProjectState", file=sys.stderr)
+        return 3
+    return main()
+
+
+if __name__ == "__main__":
+    raise SystemExit(run())

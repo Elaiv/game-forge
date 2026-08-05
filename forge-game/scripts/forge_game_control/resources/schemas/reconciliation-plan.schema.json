@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "forge-game://schemas/reconciliation-plan/1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_id",
+    "schema_version",
+    "plan_id",
+    "project_id",
+    "discovery_hash",
+    "desired_projection_id",
+    "forge_game_version",
+    "template_set_version",
+    "created_at",
+    "items",
+    "summary"
+  ],
+  "properties": {
+    "schema_id": {"const": "forge-game://schemas/reconciliation-plan/1.0.0"},
+    "schema_version": {"const": "1.0.0"},
+    "plan_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+    "project_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "discovery_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+    "desired_projection_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+    "forge_game_version": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/semver"},
+    "template_set_version": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/semver"},
+    "created_at": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/timestamp"},
+    "items": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/item"}
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["preserve", "add", "change", "remove", "conflict", "approval_required"],
+      "properties": {
+        "preserve": {"type": "integer", "minimum": 0},
+        "add": {"type": "integer", "minimum": 0},
+        "change": {"type": "integer", "minimum": 0},
+        "remove": {"type": "integer", "minimum": 0},
+        "conflict": {"type": "integer", "minimum": 0},
+        "approval_required": {"type": "integer", "minimum": 0}
+      }
+    }
+  },
+  "$defs": {
+    "path": {"type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\)[^\\u0000]+$"},
+    "nullableHash": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+      ]
+    },
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target_path",
+        "ownership",
+        "action",
+        "proposed_action",
+        "base_hash",
+        "current_hash",
+        "desired_hash",
+        "resolved_hash",
+        "merge_driver",
+        "reason_code",
+        "evidence",
+        "staged_relative_path",
+        "rollback_strategy",
+        "requires_approval"
+      ],
+      "properties": {
+        "target_path": {"$ref": "#/$defs/path"},
+        "ownership": {"enum": ["generated", "managed", "user-owned"]},
+        "action": {"enum": ["preserve", "add", "change", "remove", "conflict"]},
+        "proposed_action": {"type": ["null", "string"], "enum": [null, "change", "remove"]},
+        "base_hash": {"$ref": "#/$defs/nullableHash"},
+        "current_hash": {"$ref": "#/$defs/nullableHash"},
+        "desired_hash": {"$ref": "#/$defs/nullableHash"},
+        "resolved_hash": {"$ref": "#/$defs/nullableHash"},
+        "merge_driver": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+        "reason_code": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+        "evidence": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["summary", "diff_hash"],
+          "properties": {
+            "summary": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+            "diff_hash": {"$ref": "#/$defs/nullableHash"}
+          }
+        },
+        "staged_relative_path": {
+          "oneOf": [
+            {"type": "null"},
+            {"$ref": "#/$defs/path"}
+          ]
+        },
+        "rollback_strategy": {"enum": ["none", "delete-added", "restore-current"]},
+        "requires_approval": {"type": "boolean"}
+      }
+    }
+  }
+}

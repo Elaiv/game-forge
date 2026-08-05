@@ -1,0 +1,14 @@
+.DS_Store
+.venv/
+.coverage
+.pytest_cache/
+.ruff_cache/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# forge-game project-local runtime and generated state
+.forge-game/
+runtime-env/

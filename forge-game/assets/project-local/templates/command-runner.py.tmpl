@@ -1,0 +1,31 @@
+#!/usr/bin/env python3
+"""Run one canonical project command without invoking a shell."""
+
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+
+def main() -> int:
+    if len(sys.argv) != 2:
+        print("usage: run-command.py <check|build|test|package>", file=sys.stderr)
+        return 2
+    root = Path(__file__).resolve().parents[2]
+    manifest = root / ".forge-game" / "manifests" / "commands.json"
+    try:
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+        argv = data["commands"][sys.argv[1]]
+    except (OSError, KeyError, TypeError, json.JSONDecodeError):
+        print("invalid or unknown canonical command", file=sys.stderr)
+        return 2
+    if not isinstance(argv, list) or not argv or any(not isinstance(x, str) or not x for x in argv):
+        print("canonical command must be a non-empty argv array", file=sys.stderr)
+        return 2
+    return subprocess.run(argv, cwd=root, shell=False, check=False).returncode
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
