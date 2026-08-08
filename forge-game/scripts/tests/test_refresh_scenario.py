@@ -114,7 +114,7 @@ class RefreshScenarioTests(unittest.TestCase):
                     "schema_version": "1.0.0",
                     "entrypoint": "refresh",
                     "project_root": str(project),
-                    "inputs": {"target_forge_game_version": "0.10.0"},
+                    "inputs": {"target_forge_game_version": "0.11.0"},
                 },
                 project_state_base={"revision": 1, "content_hash": ZERO_HASH},
                 read_set=["GDD.md", "Roadmap.md"],

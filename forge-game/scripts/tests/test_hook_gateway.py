@@ -24,6 +24,8 @@ class HookGatewayTests(unittest.TestCase):
             ).build(projection_input(ci_provider="none"), outer / "desired")
             for relative in (
                 ".forge-game/project-state.json",
+                ".forge-game/policy/engineering-rules.md",
+                ".forge-game/policy/engineering-rule-catalog.json",
                 ".forge-game/bin/forge-game-control",
                 ".forge-game/bin/policy-check",
                 ".codex/hooks/forge_game_policy.py",

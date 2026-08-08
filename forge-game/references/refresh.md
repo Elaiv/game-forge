@@ -8,4 +8,6 @@ Use Refresh when the installed forge-game version, project-local templates, poli
 4. Preserve user-owned content. Surface shared-file conflicts and destructive changes for explicit approval.
 5. Obtain the refresh apply gate, apply atomically, verify migrations and invariants, then request acceptance.
 
+Refresh to the engineering-contract baseline must migrate ProjectState to `project-state/1.1.0`, pin its `engineering_policy`, and reconcile both generated files under `.forge-game/policy/`. Do not enable mutating actions while any policy hash differs from the installed package.
+
 Do not reinterpret an updated source document as approved merely because the file changed. Do not overwrite local divergence without an ownership-aware plan. Use `projection-render` and `reconciliation-plan` to emit immutable read-only bundles; before reconciliation execution exists, emit the plan and stop.

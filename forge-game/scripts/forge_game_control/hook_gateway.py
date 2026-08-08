@@ -8,6 +8,10 @@ from typing import Any
 
 from . import __version__
 from .content_addressing import envelope_content_hash
+from .engineering_rules import (
+    CURRENT_PROJECT_STATE_SCHEMA_ID,
+    EngineeringRuleCatalog,
+)
 from .json_io import load_json, loads_json
 from .schemas import SchemaRegistry
 from .template_registry import bytes_hash
@@ -164,9 +168,11 @@ def _verify_package_version(root: Path) -> None:
     state = load_json(root / ".forge-game" / "project-state.json")
     if not isinstance(state, dict):
         raise ValueError("ProjectState must be a JSON object")
-    SchemaRegistry().validate(state, "forge-game://schemas/project-state/1.0.0")
+    schemas = SchemaRegistry()
+    schemas.validate(state, CURRENT_PROJECT_STATE_SCHEMA_ID)
     if state["forge_game_version"] != __version__:
         raise ValueError("Installed forge-game version does not match ProjectState")
+    EngineeringRuleCatalog(schemas).verify_project_policy(root, state)
 
 
 def _resolve_from_cwd(value: str, cwd: Path) -> Path:

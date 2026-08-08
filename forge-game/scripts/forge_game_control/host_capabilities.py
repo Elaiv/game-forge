@@ -8,6 +8,10 @@ from typing import Any
 from . import __version__
 from .adapters import AdapterRegistry
 from .content_addressing import envelope_content_hash
+from .engineering_rules import (
+    CURRENT_PROJECT_STATE_SCHEMA_ID,
+    EngineeringRuleCatalog,
+)
 from .errors import ActionExecutionError
 from .json_io import load_json
 from .path_boundary import path_is_within_roots
@@ -18,7 +22,7 @@ from .template_registry import bytes_hash
 HOST_CAPABILITY_REPORT_SCHEMA = (
     "forge-game://schemas/host-capability-report/1.0.0"
 )
-PROJECT_STATE_SCHEMA = "forge-game://schemas/project-state/1.0.0"
+PROJECT_STATE_SCHEMA = CURRENT_PROJECT_STATE_SCHEMA_ID
 MAX_REPORT_AGE_SECONDS = 600
 HOOK_MATCHER = "^(Bash|apply_patch|Edit|Write|mcp__.*)$"
 POST_HOOK_MATCHER = (
@@ -171,6 +175,14 @@ class LocalHostCapabilityVerifier:
                 raise ActionExecutionError(
                     "Installed forge-game version does not match ProjectState"
                 )
+            try:
+                EngineeringRuleCatalog(self.schemas).verify_project_policy(
+                    project_root, state
+                )
+            except Exception as exc:
+                raise ActionExecutionError(
+                    "Project engineering policy does not match the package"
+                ) from exc
 
     @staticmethod
     def _hook_covered(entries: list[Any], matcher: str) -> bool:

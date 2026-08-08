@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "forge-game://schemas/engineering-rule-applicability/1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_id",
+    "schema_version",
+    "feature_id",
+    "catalog_id",
+    "catalog_version",
+    "catalog_hash",
+    "rules_document_hash",
+    "baseline_revision",
+    "plan_refs",
+    "applicable_rule_ids"
+  ],
+  "properties": {
+    "schema_id": {"const": "forge-game://schemas/engineering-rule-applicability/1.0.0"},
+    "schema_version": {"const": "1.0.0"},
+    "feature_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "catalog_id": {"const": "forge-game-engineering-rules"},
+    "catalog_version": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/semver"},
+    "catalog_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+    "rules_document_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+    "baseline_revision": {"type": "string", "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"},
+    "plan_refs": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/artifactRef"}
+    },
+    "applicable_rule_ids": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^[A-Z]+-[0-9]{3}$"}
+    }
+  }
+}

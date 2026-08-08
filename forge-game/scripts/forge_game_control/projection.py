@@ -9,6 +9,7 @@ from typing import Any
 
 from . import __version__
 from .content_addressing import canonical_json_bytes, content_hash
+from .engineering_rules import EngineeringRuleCatalog
 from .errors import ProjectionError
 from .immutable_storage import ensure_store_root, fsync_directory, fsync_file
 from .json_io import dumps_pretty, load_json
@@ -112,6 +113,7 @@ class ProjectionBuilder:
     def __init__(self, schemas: SchemaRegistry, templates: TemplateRegistry):
         self.schemas = schemas
         self.templates = templates
+        self.engineering_rules = EngineeringRuleCatalog(schemas)
 
     def build(
         self,
@@ -273,6 +275,24 @@ class ProjectionBuilder:
             "template_set_version": self.templates.template_set_version,
             "toolchain_fingerprint": f"unresolved:{value['unreal_engine_version']}",
             "traceability_graph_id": f"{value['project_id']}-traceability",
+            "engineering_rules_ref": self.engineering_rules.document[
+                "rules_document_target"
+            ],
+            "engineering_catalog_ref": (
+                ".forge-game/policy/engineering-rule-catalog.json"
+            ),
+            "engineering_rules_markdown": self.engineering_rules.rules_document.decode(
+                "utf-8"
+            ),
+            "engineering_rule_catalog": deepcopy(self.engineering_rules.document),
+            "engineering_catalog_id": self.engineering_rules.document["catalog_id"],
+            "engineering_catalog_version": self.engineering_rules.document[
+                "catalog_version"
+            ],
+            "engineering_catalog_hash": self.engineering_rules.catalog_hash,
+            "engineering_rules_document_hash": (
+                self.engineering_rules.rules_document_hash
+            ),
         }
 
     @staticmethod

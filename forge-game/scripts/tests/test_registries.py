@@ -18,7 +18,7 @@ class RegistryTests(unittest.TestCase):
         self.actions = ActionCatalog(self.schemas, self.workflows)
 
     def test_loads_expected_contract_catalog(self) -> None:
-        self.assertEqual(len(self.schemas.ids()), 52)
+        self.assertEqual(len(self.schemas.ids()), 56)
         self.assertEqual(
             self.workflows.ids(),
             ("bootstrap", "feature", "refresh", "release"),
@@ -92,7 +92,7 @@ class RegistryTests(unittest.TestCase):
         definition = self.workflows.get("feature")
         phases = definition["phases"]
 
-        self.assertEqual(definition["version"], "1.1.0")
+        self.assertEqual(definition["version"], "1.2.0")
         self.assertEqual(
             phases["feature.prepare"]["transitions"]["success"],
             "feature.engineering_rules",
@@ -100,6 +100,10 @@ class RegistryTests(unittest.TestCase):
         self.assertIn(
             "engineering.rules_current",
             phases["feature.engineering_rules"]["guards"],
+        )
+        self.assertEqual(
+            phases["feature.engineering_rules"]["produces"],
+            ["forge-game://schemas/engineering-rule-applicability/1.0.0"],
         )
         self.assertIn(
             "engineering.applicable_rules_recorded",
@@ -120,6 +124,10 @@ class RegistryTests(unittest.TestCase):
                 "violations": "feature.implement",
                 "blocked": "$blocked",
             },
+        )
+        self.assertEqual(
+            phases["feature.engineering_compliance"]["produces"],
+            ["forge-game://schemas/engineering-compliance/1.0.0"],
         )
         self.assertIn(
             "engineering.compliance_current",

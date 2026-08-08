@@ -25,6 +25,15 @@ Treat the packaged JSON Schemas and workflow definitions as normative.
 
 Use `validate-document`, `hash-json`, `state-read`, `state-write`, `artifact-publish`, `artifact-read`, `approval-publish`, `approval-read`, `approval-record-event`, `approval-verify`, `policy-evaluate`, `adapter-*`, `action-execute`, `action-reconcile`, `tool-plan`, `tool-execute`, `tool-reconcile`, `source-*`, `traceability-*`, `template-list`, `projection-render`, `reconciliation-plan`, and `workflow-*` through `scripts/forge-game-control`. Send one JSON request through `--request <path>` or stdin and consume one JSON response from stdout.
 
+## Engineering contracts
+
+- Use `engineering-status` with canonical `project_root` before implementation. Record its current full Git revision as `baseline_revision` in one `engineering-rule-applicability/1.0.0` data contract.
+- Use only rule IDs returned by the packaged catalog. Bind the exact plan artifact refs and current catalog/rules hashes.
+- Run `engineering-status` again with the recorded `baseline_revision` after the final code and test changes. Copy its `head_revision`, `algorithm`, and `diff_hash` into one `engineering-compliance/1.0.0` data contract.
+- Provide non-empty evidence for every applicable rule, bound either to a hash-verified file in the compliance bundle or to an exact immutable input artifact. A violation record and violated evidence must agree; `compliant` is valid only with no violations.
+- Store each data contract in its matching `engineering-rule-applicability` or `engineering-compliance` Artifact. The runtime rejects unknown IDs, stale policy hashes, mismatched applicability, a stale Git diff, missing evidence, and a PhaseResult outcome that differs from the compliance verdict.
+- Treat `.forge-game/policy/engineering-rules.md`, its catalog, and ProjectState `engineering_policy` as one hash-pinned unit. Any missing or mismatched member blocks execution until Refresh reconciles the project.
+
 ## Projection and reconciliation
 
 - Validate project facts as `ProjectionInput`; render only from the packaged hash-verified TemplateManifest into an explicit staging store.

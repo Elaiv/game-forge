@@ -1,0 +1,28 @@
+{
+  "schema_id": "forge-game://schemas/engineering-rule-catalog/1.0.0",
+  "schema_version": "1.0.0",
+  "catalog_id": "forge-game-engineering-rules",
+  "catalog_version": "1.0.0",
+  "rules_document_target": ".forge-game/policy/engineering-rules.md",
+  "rules_document_hash": "sha256:57b62929b29f27ca96161a95c85066cbfdd581150bbb6adc572364b64858328e",
+  "rule_ids": [
+    "CODE-001", "CODE-002",
+    "AGENT-001", "AGENT-002", "AGENT-003", "AGENT-004", "AGENT-005", "AGENT-006", "AGENT-007",
+    "MT-001", "MT-002", "MT-003", "MT-004", "MT-005",
+    "OBJ-001", "OBJ-002", "OBJ-003", "OBJ-004",
+    "GC-001", "GC-002", "GC-003", "GC-004", "GC-005", "GC-006",
+    "ASSET-001", "ASSET-002", "ASSET-003", "ASSET-004", "ASSET-005", "ASSET-006", "ASSET-007", "ASSET-008", "ASSET-009",
+    "DATA-001", "DATA-002",
+    "ARCH-001", "ARCH-002", "ARCH-003", "ARCH-004",
+    "DEP-001",
+    "LIFE-001", "LIFE-002", "LIFE-003",
+    "TIME-001",
+    "ERR-001", "ERR-002", "ERR-003", "ERR-004",
+    "SEC-001", "SEC-002", "SEC-003",
+    "NET-001", "NET-002", "NET-003", "NET-004", "NET-005", "NET-006", "NET-007", "NET-008", "NET-009", "NET-010", "NET-011", "NET-012", "NET-013", "NET-014", "NET-015",
+    "SAVE-001", "SAVE-002", "SAVE-003", "SAVE-004",
+    "TEST-001", "TEST-002", "TEST-003", "TEST-004", "TEST-005", "TEST-006", "TEST-007", "TEST-008", "TEST-009", "TEST-010",
+    "PERF-001"
+  ],
+  "content_hash": "sha256:fe4ba5871f1a7376a1d48a5f4a832163af1b3d46ef8c568ee92ea602fcb8c67d"
+}

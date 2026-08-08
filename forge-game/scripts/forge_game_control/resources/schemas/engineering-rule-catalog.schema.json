@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "forge-game://schemas/engineering-rule-catalog/1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_id",
+    "schema_version",
+    "catalog_id",
+    "catalog_version",
+    "rules_document_target",
+    "rules_document_hash",
+    "rule_ids",
+    "content_hash"
+  ],
+  "properties": {
+    "schema_id": {"const": "forge-game://schemas/engineering-rule-catalog/1.0.0"},
+    "schema_version": {"const": "1.0.0"},
+    "catalog_id": {"const": "forge-game-engineering-rules"},
+    "catalog_version": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/semver"},
+    "rules_document_target": {"const": ".forge-game/policy/engineering-rules.md"},
+    "rules_document_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+    "rule_ids": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^[A-Z]+-[0-9]{3}$"}
+    },
+    "content_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+  }
+}

@@ -10,6 +10,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from .content_addressing import canonical_json_bytes, envelope_content_hash
+from .engineering_rules import EngineeringContractValidator
 from .errors import ArtifactConflictError, ArtifactStoreError, DocumentValidationError
 from .immutable_storage import (
     ensure_child_directory,
@@ -41,6 +42,7 @@ class ArtifactBundleRef:
 class ArtifactStore:
     def __init__(self, schemas: SchemaRegistry, root: str | Path):
         self._schemas = schemas
+        self._engineering_contracts = EngineeringContractValidator(schemas)
         self._root = ensure_store_root(root, ArtifactStoreError)
 
     def validate_bundle(
@@ -59,6 +61,7 @@ class ArtifactStore:
         if not isinstance(document, dict):
             raise ArtifactStoreError("artifact.json must contain a JSON object")
         self._schemas.validate(document, ARTIFACT_SCHEMA_ID)
+        self._engineering_contracts.validate_artifact(document)
         self._validate_document_identity(document)
         expected_hash = envelope_content_hash(document)
         if document["content_hash"] != expected_hash:

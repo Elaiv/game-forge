@@ -17,6 +17,7 @@ from .errors import (
     InvalidRequestError,
 )
 from .execution import ActionExecutor
+from .engineering_rules import EngineeringRuleCatalog, repository_snapshot
 from .filesystem_adapter import FilesystemAdapter
 from .hook_gateway import evaluate_pre_tool
 from .json_io import dumps_pretty, load_json, loads_json
@@ -69,6 +70,29 @@ def _command_doctor(_: dict[str, Any]) -> dict[str, Any]:
 
 def _command_validate_package(_: dict[str, Any]) -> dict[str, Any]:
     return validate_package()
+
+
+def _command_engineering_status(request: dict[str, Any]) -> dict[str, Any]:
+    schemas = SchemaRegistry()
+    catalog = EngineeringRuleCatalog(schemas)
+    project_root = _require(request, "project_root", str)
+    baseline = request.get("baseline_revision")
+    if baseline is not None and not isinstance(baseline, str):
+        raise InvalidRequestError("baseline_revision must be a string or null")
+    state = catalog.load_and_verify_project_policy(project_root)
+    return {
+        "catalog": catalog.metadata(),
+        "project_policy": {
+            "status": "verified",
+            "project_id": state["project_id"],
+            "project_state_revision": state["revision"],
+            "engineering_policy": state["engineering_policy"],
+        },
+        "repository": repository_snapshot(
+            project_root,
+            baseline,
+        ),
+    }
 
 
 def _command_hash_json(request: dict[str, Any]) -> dict[str, Any]:
@@ -570,6 +594,7 @@ COMMANDS: dict[str, Command] = {
     "artifact-publish": _command_artifact_publish,
     "artifact-read": _command_artifact_read,
     "doctor": _command_doctor,
+    "engineering-status": _command_engineering_status,
     "validate-package": _command_validate_package,
     "hash-json": _command_hash_json,
     "hook-check": _command_hook_check,

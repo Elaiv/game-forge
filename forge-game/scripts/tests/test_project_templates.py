@@ -8,6 +8,7 @@ import unittest
 from pathlib import Path
 
 from forge_game_control.errors import ProjectionError, TemplateRegistryError
+from forge_game_control.engineering_rules import EngineeringRuleCatalog
 from forge_game_control.projection import ProjectionBuilder
 from forge_game_control.schemas import SchemaRegistry
 from forge_game_control.template_registry import TemplateRegistry
@@ -47,8 +48,8 @@ class ProjectTemplateTests(unittest.TestCase):
         self.templates = TemplateRegistry(self.schemas)
 
     def test_manifest_and_sources_are_hash_verified(self) -> None:
-        self.assertEqual(len(self.templates.templates()), 19)
-        self.assertEqual(self.templates.template_set_version, "1.3.0")
+        self.assertEqual(len(self.templates.templates()), 21)
+        self.assertEqual(self.templates.template_set_version, "1.4.0")
         with tempfile.TemporaryDirectory() as directory:
             copied = Path(directory, "project-local")
             shutil.copytree(self.templates.asset_root, copied)
@@ -64,7 +65,7 @@ class ProjectTemplateTests(unittest.TestCase):
             repeated, same_bundle = builder.build(projection_input(), directory)
             self.assertEqual(document, repeated)
             self.assertEqual(bundle, same_bundle)
-            self.assertEqual(len(document["files"]), 37)
+            self.assertEqual(len(document["files"]), 39)
             targets = {item["target_path"] for item in document["files"]}
             self.assertIn("AGENTS.md", targets)
             self.assertIn("Source/Core/AGENTS.md", targets)
@@ -72,6 +73,33 @@ class ProjectTemplateTests(unittest.TestCase):
             self.assertIn(".forge-game/bin/policy-check", targets)
             self.assertIn(".forge-game/bin/forge-game-control", targets)
             self.assertIn(".forge-game/bin/forge-game-control.py", targets)
+            self.assertIn(".forge-game/policy/engineering-rules.md", targets)
+            self.assertIn(
+                ".forge-game/policy/engineering-rule-catalog.json", targets
+            )
+            engineering_rules = EngineeringRuleCatalog(self.schemas)
+            self.assertEqual(
+                (
+                    bundle
+                    / "files"
+                    / ".forge-game"
+                    / "policy"
+                    / "engineering-rules.md"
+                ).read_bytes(),
+                engineering_rules.rules_document,
+            )
+            self.assertEqual(
+                json.loads(
+                    (
+                        bundle
+                        / "files"
+                        / ".forge-game"
+                        / "policy"
+                        / "engineering-rule-catalog.json"
+                    ).read_text(encoding="utf-8")
+                ),
+                engineering_rules.document,
+            )
             self.assertEqual(
                 len([item for item in targets if item.endswith("/SKILL.md")]),
                 7,
@@ -104,6 +132,19 @@ class ProjectTemplateTests(unittest.TestCase):
                 )
             )
             self.schemas.validate(project_state)
+            self.assertEqual(
+                project_state["engineering_policy"]["catalog_hash"],
+                "sha256:fe4ba5871f1a7376a1d48a5f4a832163af1b3d46ef8c568ee92ea602fcb8c67d",
+            )
+            role_skill = (
+                bundle
+                / "files"
+                / ".agents"
+                / "skills"
+                / "implement-game-feature"
+                / "SKILL.md"
+            ).read_text(encoding="utf-8")
+            self.assertIn(".forge-game/policy/engineering-rules.md", role_skill)
             traceability = json.loads(
                 (bundle / "files" / ".forge-game" / "traceability" / "graph.json").read_text(
                     encoding="utf-8"

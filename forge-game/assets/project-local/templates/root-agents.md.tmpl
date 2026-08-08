@@ -1,6 +1,7 @@
 # {{text:project_name}} repository guidance
 
 - Treat `{{text:gdd_ref}}`, `{{text:roadmap_ref}}`, `{{text:architecture_ref}}`, and `{{text:nfr_ref}}` as canonical product and architecture sources.
+- Read `{{text:engineering_rules_ref}}` before Unreal code work or review. Verify it against `{{text:engineering_catalog_ref}}`; stop on a missing or mismatched hash.
 - Run project checks through `.forge-game/bin/run-command <check|build|test|package>`; command arguments come from `.forge-game/manifests/commands.json`.
 - Keep one feature ID per implementation run and preserve traceability to requirements, tests, and evidence.
 - Do not edit files classified as `generated`; propose changes through forge-game refresh/reconciliation.

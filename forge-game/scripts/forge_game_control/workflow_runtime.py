@@ -13,6 +13,13 @@ from .approval_store import ApprovalStore
 from .approval_verifier import LocalApprovalVerifier
 from .artifact_store import ArtifactStore
 from .content_addressing import content_hash, envelope_content_hash
+from .engineering_rules import (
+    APPLICABILITY_SCHEMA_ID,
+    COMPLIANCE_SCHEMA_ID,
+    EngineeringContractValidator,
+    bytes_hash,
+    repository_snapshot,
+)
 from .errors import (
     DocumentValidationError,
     RunConflictError,
@@ -75,6 +82,7 @@ class WorkflowRuntime:
     ):
         self._schemas = schemas
         self._workflows = workflows
+        self._engineering_contracts = EngineeringContractValidator(schemas)
         self._runtime_root = ensure_store_root(runtime_root, WorkflowRuntimeError)
         self._artifact_store = (
             ArtifactStore(schemas, artifact_store_root)
@@ -351,6 +359,7 @@ class WorkflowRuntime:
                 result,
                 state,
                 phase,
+                invocation,
                 require_outputs=(
                     result["failure"] is None
                     and declared_target
@@ -799,6 +808,7 @@ class WorkflowRuntime:
         result: dict[str, Any],
         state: dict[str, Any],
         phase: dict[str, Any],
+        invocation: dict[str, Any],
         *,
         require_outputs: bool,
     ) -> None:
@@ -811,16 +821,18 @@ class WorkflowRuntime:
             raise WorkflowRuntimeError(
                 "PhaseResult contains duplicate artifact or evidence references"
             )
-        if (
-            require_outputs
-            and ARTIFACT_SCHEMA_ID in phase["produces"]
-            and not result["artifact_refs"]
-        ):
+        expected_artifact_contracts = set(phase["produces"]) - {APPROVAL_SCHEMA_ID}
+        if require_outputs and expected_artifact_contracts and not result["artifact_refs"]:
             raise WorkflowRuntimeError("PhaseResult is missing its required artifact output")
         if references and self._artifact_store is None:
             raise WorkflowRuntimeError(
                 "Artifact store is required to verify PhaseResult references"
             )
+        output_artifacts: list[tuple[dict[str, Any], dict[str, Any], str]] = []
+        output_identities = {
+            (reference["artifact_id"], reference["revision"], reference["content_hash"])
+            for reference in result["artifact_refs"]
+        }
         for reference in references:
             assert self._artifact_store is not None
             artifact, stored_ref = self._artifact_store.read(
@@ -840,7 +852,116 @@ class WorkflowRuntime:
                 )
             if artifact["created_by_role"] != phase["executor_role"]:
                 raise WorkflowRuntimeError("Artifact producer role does not match the phase")
+            identity = (
+                reference["artifact_id"],
+                reference["revision"],
+                reference["content_hash"],
+            )
+            if identity in output_identities:
+                contract_id = self._engineering_contracts.validate_artifact(artifact)
+                if (
+                    ARTIFACT_SCHEMA_ID not in expected_artifact_contracts
+                    and contract_id not in expected_artifact_contracts
+                ):
+                    raise WorkflowRuntimeError(
+                        f"PhaseResult artifact contract is not declared: {contract_id}"
+                    )
+                output_artifacts.append((artifact, reference, contract_id))
+        self._validate_engineering_outputs(
+            result,
+            state,
+            phase,
+            invocation,
+            output_artifacts,
+        )
         self._validate_action_references(result, state, phase)
+
+    def _validate_engineering_outputs(
+        self,
+        result: dict[str, Any],
+        state: dict[str, Any],
+        phase: dict[str, Any],
+        invocation: dict[str, Any],
+        outputs: list[tuple[dict[str, Any], dict[str, Any], str]],
+    ) -> None:
+        expected = set(phase["produces"])
+        typed = [item for item in outputs if item[2] in {APPLICABILITY_SCHEMA_ID, COMPLIANCE_SCHEMA_ID}]
+        if not expected.intersection({APPLICABILITY_SCHEMA_ID, COMPLIANCE_SCHEMA_ID}):
+            if typed:
+                raise WorkflowRuntimeError(
+                    "Engineering contract was emitted by an undeclared phase"
+                )
+            return
+        if len(typed) != 1:
+            raise WorkflowRuntimeError(
+                "Engineering contract phase must emit exactly one typed artifact"
+            )
+        artifact, _, contract_id = typed[0]
+        data = artifact["data"]
+        start_request = invocation["start_request"]
+        feature_id = start_request["inputs"].get("feature_id")
+        if data["feature_id"] != feature_id:
+            raise WorkflowRuntimeError("Engineering contract feature_id mismatch")
+        project_root = start_request["project_root"]
+        if contract_id == APPLICABILITY_SCHEMA_ID:
+            snapshot = repository_snapshot(project_root)
+            if data["baseline_revision"] != snapshot["head_revision"]:
+                raise WorkflowRuntimeError(
+                    "Engineering applicability baseline is not the current HEAD"
+                )
+            if snapshot["tracked_diff_hash"] != bytes_hash(b"") or snapshot["untracked"]:
+                raise WorkflowRuntimeError(
+                    "Engineering applicability requires a clean feature worktree"
+                )
+            return
+        applicability_ref = data["applicability_ref"]
+        applicability_identity = (
+            applicability_ref["artifact_id"],
+            applicability_ref["revision"],
+            applicability_ref["content_hash"],
+        )
+        state_identities = {
+            (item["artifact_id"], item["revision"], item["content_hash"])
+            for item in state["artifact_refs"]
+        }
+        if applicability_identity not in state_identities:
+            raise WorkflowRuntimeError(
+                "Compliance references applicability outside the current run state"
+            )
+        if self._artifact_store is None:
+            raise WorkflowRuntimeError("Artifact store is required for compliance")
+        applicability, stored_ref = self._artifact_store.read(
+            state["workflow"]["workflow_id"],
+            applicability_ref["artifact_id"],
+            revision=applicability_ref["revision"],
+        )
+        if stored_ref.content_hash != applicability_ref["content_hash"]:
+            raise WorkflowRuntimeError("Compliance applicability hash mismatch")
+        if (
+            self._engineering_contracts.validate_artifact(applicability)
+            != APPLICABILITY_SCHEMA_ID
+        ):
+            raise WorkflowRuntimeError("Compliance reference is not applicability")
+        applicability_data = applicability["data"]
+        bindings = {
+            "feature_id": applicability_data["feature_id"],
+            "baseline_revision": applicability_data["baseline_revision"],
+            "applicable_rule_ids": applicability_data["applicable_rule_ids"],
+        }
+        for field, expected_value in bindings.items():
+            if data[field] != expected_value:
+                raise WorkflowRuntimeError(
+                    f"Compliance does not match applicability field {field}"
+                )
+        snapshot = repository_snapshot(project_root, data["baseline_revision"])
+        if data["diff_algorithm"] != snapshot["algorithm"]:
+            raise WorkflowRuntimeError("Compliance diff algorithm mismatch")
+        if data["checked_head_revision"] != snapshot["head_revision"]:
+            raise WorkflowRuntimeError("Compliance HEAD revision is stale")
+        if data["checked_diff_hash"] != snapshot["diff_hash"]:
+            raise WorkflowRuntimeError("Compliance final diff hash is stale")
+        if result["outcome"] != data["verdict"]:
+            raise WorkflowRuntimeError("Phase outcome does not match compliance verdict")
 
     def _validate_action_references(
         self,
@@ -930,14 +1051,40 @@ class WorkflowRuntime:
         state: dict[str, Any],
         phase: dict[str, Any],
     ) -> dict[str, Any] | None:
-        if ARTIFACT_SCHEMA_ID in phase["requires"] and not state["artifact_refs"]:
+        required = set(phase["requires"])
+        if ARTIFACT_SCHEMA_ID in required and not state["artifact_refs"]:
             return {
                 "code": "phase.required_artifacts_missing",
                 "message": "Phase requires validated artifact inputs",
                 "effect_status": "none",
                 "retryable": True,
             }
-        if APPROVAL_SCHEMA_ID in phase["requires"] and not state["approval_refs"]:
+        typed_required = required.intersection(
+            {APPLICABILITY_SCHEMA_ID, COMPLIANCE_SCHEMA_ID}
+        )
+        if typed_required:
+            available: set[str] = set()
+            if self._artifact_store is not None:
+                for reference in state["artifact_refs"]:
+                    artifact, stored_ref = self._artifact_store.read(
+                        state["workflow"]["workflow_id"],
+                        reference["artifact_id"],
+                        revision=reference["revision"],
+                    )
+                    if stored_ref.content_hash != reference["content_hash"]:
+                        raise WorkflowRuntimeError("RunState artifact hash mismatch")
+                    available.add(
+                        self._engineering_contracts.validate_artifact(artifact)
+                    )
+            missing = sorted(typed_required - available)
+            if missing:
+                return {
+                    "code": "phase.required_engineering_contract_missing",
+                    "message": "Phase requires engineering contracts: " + ", ".join(missing),
+                    "effect_status": "none",
+                    "retryable": True,
+                }
+        if APPROVAL_SCHEMA_ID in required and not state["approval_refs"]:
             return {
                 "code": "phase.required_approval_missing",
                 "message": "Phase requires a validated approval",

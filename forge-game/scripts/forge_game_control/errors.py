@@ -102,6 +102,10 @@ class ProjectionError(ForgeGameError):
     code = "projection_error"
 
 
+class EngineeringRulesError(ForgeGameError):
+    code = "engineering_rules_error"
+
+
 class MergeDriverError(ForgeGameError):
     code = "merge_driver_error"
 

@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "forge-game://schemas/engineering-compliance/1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_id",
+    "schema_version",
+    "feature_id",
+    "catalog_id",
+    "catalog_version",
+    "catalog_hash",
+    "rules_document_hash",
+    "applicability_ref",
+    "baseline_revision",
+    "checked_head_revision",
+    "diff_algorithm",
+    "checked_diff_hash",
+    "applicable_rule_ids",
+    "evidence",
+    "violations",
+    "verdict"
+  ],
+  "properties": {
+    "schema_id": {"const": "forge-game://schemas/engineering-compliance/1.0.0"},
+    "schema_version": {"const": "1.0.0"},
+    "feature_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "catalog_id": {"const": "forge-game-engineering-rules"},
+    "catalog_version": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/semver"},
+    "catalog_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+    "rules_document_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+    "applicability_ref": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/artifactRef"},
+    "baseline_revision": {"type": "string", "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"},
+    "checked_head_revision": {"type": "string", "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$"},
+    "diff_algorithm": {"const": "forge-game-git-diff/1.0.0"},
+    "checked_diff_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+    "applicable_rule_ids": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^[A-Z]+-[0-9]{3}$"}
+    },
+    "evidence": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["rule_id", "status", "evidence_refs"],
+        "properties": {
+          "rule_id": {"type": "string", "pattern": "^[A-Z]+-[0-9]{3}$"},
+          "status": {"enum": ["satisfied", "violated"]},
+          "evidence_refs": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {"$ref": "#/$defs/evidenceRef"}
+          }
+        }
+      }
+    },
+    "violations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["rule_id", "message", "evidence_refs"],
+        "properties": {
+          "rule_id": {"type": "string", "pattern": "^[A-Z]+-[0-9]{3}$"},
+          "message": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+          "evidence_refs": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {"$ref": "#/$defs/evidenceRef"}
+          }
+        }
+      }
+    },
+    "verdict": {"enum": ["compliant", "violations"]}
+  },
+  "$defs": {
+    "evidenceRef": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "path", "content_hash"],
+          "properties": {
+            "kind": {"const": "bundle"},
+            "path": {"type": "string", "pattern": "^evidence/[^\\u0000]+$"},
+            "content_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "artifact_ref"],
+          "properties": {
+            "kind": {"const": "artifact"},
+            "artifact_ref": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/artifactRef"}
+          }
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"verdict": {"const": "compliant"}}},
+      "then": {
+        "properties": {
+          "violations": {"maxItems": 0},
+          "evidence": {
+            "items": {"properties": {"status": {"const": "satisfied"}}}
+          }
+        }
+      },
+      "else": {"properties": {"violations": {"minItems": 1}}}
+    }
+  ]
+}

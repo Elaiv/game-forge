@@ -8,6 +8,7 @@ from typing import Any
 from . import __version__
 from .action_catalog import ActionCatalog
 from .adapters import AdapterRegistry
+from .engineering_rules import EngineeringRuleCatalog
 from .merge_drivers import MergeDriverRegistry
 from .schemas import SchemaRegistry
 from .template_registry import TemplateRegistry
@@ -21,6 +22,7 @@ def validate_package() -> dict[str, Any]:
     templates = TemplateRegistry(schemas)
     merge_drivers = MergeDriverRegistry()
     adapters = AdapterRegistry(schemas)
+    engineering_rules = EngineeringRuleCatalog(schemas)
     return {
         "package_version": __version__,
         "schema_count": len(schemas.ids()),
@@ -39,6 +41,13 @@ def validate_package() -> dict[str, Any]:
         "merge_driver_ids": list(merge_drivers.ids()),
         "adapter_count": len(adapters.ids()),
         "adapter_ids": list(adapters.ids()),
+        "engineering_rule_catalog_id": engineering_rules.document["catalog_id"],
+        "engineering_rule_catalog_version": engineering_rules.document[
+            "catalog_version"
+        ],
+        "engineering_rule_catalog_hash": engineering_rules.catalog_hash,
+        "engineering_rules_document_hash": engineering_rules.rules_document_hash,
+        "engineering_rule_count": len(engineering_rules.ids),
     }
 
 
