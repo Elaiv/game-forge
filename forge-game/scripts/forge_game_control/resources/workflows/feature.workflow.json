@@ -2,7 +2,7 @@
   "schema_id": "forge-game://schemas/workflow-definition/1.0.0",
   "schema_version": "1.0.0",
   "workflow_id": "feature",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "start_request_schema_id": "forge-game://schemas/start-run-request/1.0.0",
   "entry_phase": "feature.eligibility",
   "phases": {
@@ -73,7 +73,21 @@
       "allowed_actions": ["git.worktree.create", "git.lfs.lock"],
       "produces": ["forge-game://schemas/artifact/1.0.0"],
       "gate": null,
-      "transitions": {"success": "feature.implement", "lock_conflict": "$blocked", "failed": "$blocked"},
+      "transitions": {"success": "feature.engineering_rules", "lock_conflict": "$blocked", "failed": "$blocked"},
+      "checkpoint": true
+    },
+    "feature.engineering_rules": {
+      "phase_id": "feature.engineering_rules",
+      "executor_role": "implementer",
+      "purpose": "Read references/engineering-rules.md before code changes and publish the applicable rule IDs for the approved feature plan.",
+      "allowed_run_statuses": ["running"],
+      "requires": ["forge-game://schemas/artifact/1.0.0"],
+      "guards": ["feature.workspace_valid", "feature.plan_approved", "engineering.rules_current"],
+      "capabilities": ["filesystem.read"],
+      "allowed_actions": [],
+      "produces": ["forge-game://schemas/artifact/1.0.0"],
+      "gate": null,
+      "transitions": {"ready": "feature.implement", "blocked": "$blocked"},
       "checkpoint": true
     },
     "feature.implement": {
@@ -82,7 +96,7 @@
       "purpose": "Implement approved tasks as small preflighted atomic commits.",
       "allowed_run_statuses": ["running"],
       "requires": ["forge-game://schemas/artifact/1.0.0"],
-      "guards": ["feature.workspace_valid", "feature.plan_approved", "lfs.locks_valid"],
+      "guards": ["feature.workspace_valid", "feature.plan_approved", "lfs.locks_valid", "engineering.rules_acknowledged", "engineering.applicable_rules_recorded"],
       "capabilities": ["filesystem.write", "build.preflight", "git.write", "unreal_mcp.write"],
       "allowed_actions": ["project.patch.apply", "build.preflight", "git.commit", "unreal.mutate"],
       "produces": ["forge-game://schemas/artifact/1.0.0"],
@@ -157,7 +171,7 @@
       "allowed_actions": [],
       "produces": ["forge-game://schemas/approval-record/1.0.0"],
       "gate": {"gate_id": "feature.test_coverage", "decisions": ["cover_now", "defer", "waive_skip"]},
-      "transitions": {"cover_now": "feature.test_implement", "defer": "feature.verify", "waive_skip": "feature.verify"},
+      "transitions": {"cover_now": "feature.test_implement", "defer": "feature.engineering_compliance", "waive_skip": "feature.engineering_compliance"},
       "checkpoint": true
     },
     "feature.test_implement": {
@@ -185,7 +199,21 @@
       "allowed_actions": ["test.gated.run"],
       "produces": ["forge-game://schemas/artifact/1.0.0"],
       "gate": null,
-      "transitions": {"passed": "feature.verify", "test_failure": "feature.test_implement", "implementation_failure": "feature.implement"},
+      "transitions": {"passed": "feature.engineering_compliance", "test_failure": "feature.test_implement", "implementation_failure": "feature.implement"},
+      "checkpoint": true
+    },
+    "feature.engineering_compliance": {
+      "phase_id": "feature.engineering_compliance",
+      "executor_role": "verifier",
+      "purpose": "Independently check the final diff against engineering-rules.md and publish the checked diff hash, applicable rule IDs, evidence, violations, and compliance verdict.",
+      "allowed_run_statuses": ["running"],
+      "requires": ["forge-game://schemas/artifact/1.0.0"],
+      "guards": ["feature.diff_current", "engineering.rules_current", "verifier.fresh_context"],
+      "capabilities": ["filesystem.read", "git.read"],
+      "allowed_actions": [],
+      "produces": ["forge-game://schemas/artifact/1.0.0"],
+      "gate": null,
+      "transitions": {"compliant": "feature.verify", "violations": "feature.implement", "blocked": "$blocked"},
       "checkpoint": true
     },
     "feature.verify": {
@@ -194,7 +222,7 @@
       "purpose": "Issue an independent verdict from requirements, final diff, and evidence.",
       "allowed_run_statuses": ["running"],
       "requires": ["forge-game://schemas/artifact/1.0.0"],
-      "guards": ["verifier.fresh_context", "feature.evidence_current"],
+      "guards": ["verifier.fresh_context", "feature.evidence_current", "engineering.compliance_current"],
       "capabilities": ["filesystem.read", "git.read"],
       "allowed_actions": [],
       "produces": ["forge-game://schemas/artifact/1.0.0"],

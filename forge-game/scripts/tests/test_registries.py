@@ -88,6 +88,44 @@ class RegistryTests(unittest.TestCase):
         with self.assertRaisesRegex(WorkflowRegistryError, "decisions and transitions"):
             WorkflowRegistry(self.schemas, [definition])
 
+    def test_feature_enforces_engineering_rules_before_code_and_after_tests(self) -> None:
+        definition = self.workflows.get("feature")
+        phases = definition["phases"]
+
+        self.assertEqual(definition["version"], "1.1.0")
+        self.assertEqual(
+            phases["feature.prepare"]["transitions"]["success"],
+            "feature.engineering_rules",
+        )
+        self.assertIn(
+            "engineering.rules_current",
+            phases["feature.engineering_rules"]["guards"],
+        )
+        self.assertIn(
+            "engineering.applicable_rules_recorded",
+            phases["feature.implement"]["guards"],
+        )
+        self.assertEqual(
+            phases["feature.test_gate"]["transitions"]["defer"],
+            "feature.engineering_compliance",
+        )
+        self.assertEqual(
+            phases["feature.test_execute"]["transitions"]["passed"],
+            "feature.engineering_compliance",
+        )
+        self.assertEqual(
+            phases["feature.engineering_compliance"]["transitions"],
+            {
+                "compliant": "feature.verify",
+                "violations": "feature.implement",
+                "blocked": "$blocked",
+            },
+        )
+        self.assertIn(
+            "engineering.compliance_current",
+            phases["feature.verify"]["guards"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
