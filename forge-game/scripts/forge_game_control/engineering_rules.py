@@ -21,6 +21,7 @@ APPLICABILITY_SCHEMA_ID = (
     "forge-game://schemas/engineering-rule-applicability/1.0.0"
 )
 COMPLIANCE_SCHEMA_ID = "forge-game://schemas/engineering-compliance/1.0.0"
+PHASE_OUTPUT_SCHEMA_ID = "forge-game://schemas/phase-output/1.0.0"
 CURRENT_PROJECT_STATE_SCHEMA_ID = "forge-game://schemas/project-state/1.1.0"
 CATALOG_PACKAGE = "forge_game_control.resources"
 CATALOG_FILE = "engineering-rule-catalog.json"
@@ -189,6 +190,7 @@ class EngineeringContractValidator:
     _TYPE_TO_SCHEMA = {
         "engineering-rule-applicability": APPLICABILITY_SCHEMA_ID,
         "engineering-compliance": COMPLIANCE_SCHEMA_ID,
+        "phase-output": PHASE_OUTPUT_SCHEMA_ID,
     }
 
     def __init__(
@@ -223,6 +225,8 @@ class EngineeringContractValidator:
             return contract_id
         data = artifact["data"]
         self.schemas.validate(data, contract_id)
+        if contract_id == PHASE_OUTPUT_SCHEMA_ID:
+            return contract_id
         self._validate_catalog_binding(data)
         selected = data["applicable_rule_ids"]
         unknown = sorted(set(selected) - self.catalog.id_set)

@@ -17,11 +17,13 @@ from .engineering_rules import (
     APPLICABILITY_SCHEMA_ID,
     COMPLIANCE_SCHEMA_ID,
     EngineeringContractValidator,
+    PHASE_OUTPUT_SCHEMA_ID,
     bytes_hash,
     repository_snapshot,
 )
 from .errors import (
     DocumentValidationError,
+    ForgeGameError,
     RunConflictError,
     WorkflowRuntimeError,
 )
@@ -36,6 +38,7 @@ from .json_io import load_json
 from .run_lock import RunFileLock
 from .schemas import SchemaRegistry
 from .state import SnapshotRef, StateStore
+from .template_registry import validate_target_path
 from .workflows import TERMINAL_TARGETS, WorkflowRegistry
 
 
@@ -44,7 +47,7 @@ RUN_START_SCHEMA_ID = "forge-game://schemas/run-start-record/1.0.0"
 RUN_STATE_SCHEMA_ID = "forge-game://schemas/run-state/1.0.0"
 INVOCATION_SCHEMA_ID = "forge-game://schemas/phase-invocation/1.2.0"
 LEGACY_INVOCATION_SCHEMA_ID = "forge-game://schemas/phase-invocation/1.1.0"
-RESULT_SCHEMA_ID = "forge-game://schemas/phase-result/1.1.0"
+RESULT_SCHEMA_ID = "forge-game://schemas/phase-result/1.2.0"
 GATE_REQUEST_SCHEMA_ID = "forge-game://schemas/gate-request/1.0.0"
 TRANSITION_SCHEMA_ID = "forge-game://schemas/transition-record/1.0.0"
 RECOVERY_SCHEMA_ID = "forge-game://schemas/recovery-request/1.0.0"
@@ -94,7 +97,9 @@ class WorkflowRuntime:
             if approval_store_root is not None
             else None
         )
-        self._execution_enabled = execution_enabled
+        # Kept as an API compatibility argument. Exact executable action IDs are
+        # the sole authority; a boolean must never bypass a missing adapter.
+        _ = execution_enabled
         self._executable_action_ids = frozenset(executable_action_ids or ())
         self._states = StateStore(schemas)
 
@@ -119,6 +124,7 @@ class WorkflowRuntime:
                 f"StartRunRequest project_root is not canonical; use {project_root}"
             )
         self._validate_project_state_base(project_state_base)
+        self._validate_bound_project_state(project_root, project_state_base)
         self._validate_sets(read_set, write_set)
         selected_run_id = run_id or f"run-{uuid.uuid4().hex}"
         require_safe_id(selected_run_id, "run_id", WorkflowRuntimeError)
@@ -250,11 +256,7 @@ class WorkflowRuntime:
             missing_actions = sorted(
                 set(phase["allowed_actions"]) - self._executable_action_ids
             )
-            if (
-                phase["allowed_actions"]
-                and not self._execution_enabled
-                and missing_actions
-            ):
+            if phase["allowed_actions"] and missing_actions:
                 return self._block_without_transition(
                     run_directory,
                     state,
@@ -802,6 +804,7 @@ class WorkflowRuntime:
             )
         if not phase["allowed_actions"] and result["action_refs"]:
             raise WorkflowRuntimeError("Action refs are forbidden for an actionless phase")
+        self._validate_guard_results(result, state, phase)
 
     def _validate_result_references(
         self,
@@ -859,14 +862,27 @@ class WorkflowRuntime:
             )
             if identity in output_identities:
                 contract_id = self._engineering_contracts.validate_artifact(artifact)
-                if (
-                    ARTIFACT_SCHEMA_ID not in expected_artifact_contracts
-                    and contract_id not in expected_artifact_contracts
-                ):
+                if artifact["status"] != "valid":
+                    raise WorkflowRuntimeError(
+                        "PhaseResult output artifacts must have valid status"
+                    )
+                declared = contract_id in (
+                    expected_artifact_contracts - {ARTIFACT_SCHEMA_ID}
+                ) or (
+                    ARTIFACT_SCHEMA_ID in expected_artifact_contracts
+                    and contract_id == PHASE_OUTPUT_SCHEMA_ID
+                )
+                if not declared:
                     raise WorkflowRuntimeError(
                         f"PhaseResult artifact contract is not declared: {contract_id}"
                     )
                 output_artifacts.append((artifact, reference, contract_id))
+        self._validate_phase_outputs(
+            state,
+            phase,
+            output_artifacts,
+            require_outputs=require_outputs,
+        )
         self._validate_engineering_outputs(
             result,
             state,
@@ -969,6 +985,7 @@ class WorkflowRuntime:
         state: dict[str, Any],
         phase: dict[str, Any],
     ) -> None:
+        referenced_actions: set[str] = set()
         for result_id in result["action_refs"]:
             action_result, execution_request = self._read_action_execution(result_id)
             intent = execution_request["intent"]
@@ -989,6 +1006,8 @@ class WorkflowRuntime:
                 raise WorkflowRuntimeError(
                     "ActionResult action is not allowed by the current phase"
                 )
+            referenced_actions.add(intent["action_id"])
+            self._validate_action_scope(intent, state)
             if action_result["intent_id"] != intent["intent_id"]:
                 raise WorkflowRuntimeError("ActionResult intent_id mismatch")
             if action_result["intent_hash"] != intent["content_hash"]:
@@ -997,6 +1016,129 @@ class WorkflowRuntime:
                 raise WorkflowRuntimeError(
                     "Successful PhaseResult can only reference succeeded actions"
                 )
+        if result["failure"] is None:
+            missing = sorted(set(phase["allowed_actions"]) - referenced_actions)
+            if missing:
+                raise WorkflowRuntimeError(
+                    "Successful PhaseResult is missing required actions: "
+                    + ", ".join(missing)
+                )
+
+    @staticmethod
+    def _validate_action_scope(
+        intent: dict[str, Any],
+        state: dict[str, Any],
+    ) -> None:
+        path_targets = [
+            target
+            for target in intent["targets"]
+            if target["kind"] in {"path", "lfs_path"}
+        ]
+        if not path_targets:
+            return
+        action_class = intent["action_class"]
+        write_classes = {
+            "project_file_mutation",
+            "project_file_removal",
+            "git_mutation",
+            "lfs_mutation",
+            "release_publishing",
+            "runtime_mutation",
+        }
+        if action_class in write_classes:
+            scopes = state["write_set"]
+            label = "write_set"
+        elif action_class == "process_execution":
+            scopes = [*state["read_set"], *state["write_set"]]
+            label = "read_set/write_set"
+        else:
+            return
+        for target in path_targets:
+            try:
+                path = validate_target_path(target["value"])
+            except ForgeGameError as exc:
+                raise WorkflowRuntimeError(
+                    f"Action target path is not canonical: {target['value']!r}"
+                ) from exc
+            if not any(
+                path == scope or path.startswith(scope.rstrip("/") + "/")
+                for scope in scopes
+            ):
+                raise WorkflowRuntimeError(
+                    f"Action target {path!r} is outside the run {label}"
+                )
+
+    @staticmethod
+    def _validate_guard_results(
+        result: dict[str, Any],
+        state: dict[str, Any],
+        phase: dict[str, Any],
+    ) -> None:
+        guard_results = result["guard_results"]
+        guard_ids = [item["guard_id"] for item in guard_results]
+        if len(guard_ids) != len(set(guard_ids)):
+            raise WorkflowRuntimeError("PhaseResult contains duplicate guard results")
+        expected = set(phase["guards"])
+        actual = set(guard_ids)
+        unknown = sorted(actual - expected)
+        if unknown:
+            raise WorkflowRuntimeError(
+                "PhaseResult contains undeclared guard results: " + ", ".join(unknown)
+            )
+        if result["failure"] is not None:
+            return
+        missing = sorted(expected - actual)
+        blocked = sorted(
+            item["guard_id"]
+            for item in guard_results
+            if item["status"] != "satisfied"
+        )
+        if missing or blocked:
+            details: list[str] = []
+            if missing:
+                details.append("missing=" + ",".join(missing))
+            if blocked:
+                details.append("blocked=" + ",".join(blocked))
+            raise WorkflowRuntimeError(
+                "Successful PhaseResult requires exact satisfied guard results: "
+                + "; ".join(details)
+            )
+        available_evidence = {
+            *result["action_refs"],
+            *result["approval_refs"],
+            *(item["artifact_id"] for item in result["artifact_refs"]),
+            *(item["artifact_id"] for item in result["evidence_refs"]),
+            *state["action_refs"],
+            *state["approval_refs"],
+            *(item["artifact_id"] for item in state["artifact_refs"]),
+            *(item["artifact_id"] for item in state["input_refs"]),
+        }
+        for item in guard_results:
+            if not item["evidence_refs"] or not set(item["evidence_refs"]).issubset(
+                available_evidence
+            ):
+                raise WorkflowRuntimeError(
+                    f"guard evidence is missing or unbound: {item['guard_id']}"
+                )
+
+    @staticmethod
+    def _validate_phase_outputs(
+        state: dict[str, Any],
+        phase: dict[str, Any],
+        outputs: list[tuple[dict[str, Any], dict[str, Any], str]],
+        *,
+        require_outputs: bool,
+    ) -> None:
+        if ARTIFACT_SCHEMA_ID not in set(phase["produces"]):
+            return
+        typed = [item for item in outputs if item[2] == PHASE_OUTPUT_SCHEMA_ID]
+        if require_outputs and len(typed) != 1:
+            raise WorkflowRuntimeError(
+                "Generic artifact phases must emit exactly one typed phase-output"
+            )
+        for artifact, _, _ in typed:
+            if artifact["data"]["phase_id"] != state["current_phase"]:
+                raise WorkflowRuntimeError("phase-output phase_id mismatch")
 
     def _read_action_execution(
         self, result_id: str
@@ -1547,6 +1689,36 @@ class WorkflowRuntime:
         ):
             raise WorkflowRuntimeError("Existing project baseline requires a SHA-256 hash")
 
+    def _validate_bound_project_state(
+        self,
+        project_root: str,
+        project_state_base: dict[str, Any],
+    ) -> None:
+        state_path = Path(project_root) / ".forge-game" / "project-state.json"
+        if project_state_base["revision"] == 0:
+            if state_path.exists() or state_path.is_symlink():
+                raise WorkflowRuntimeError(
+                    "Revision zero project baseline requires ProjectState to be absent"
+                )
+            return
+        if state_path.is_symlink() or not state_path.is_file():
+            raise WorkflowRuntimeError(
+                "Declared ProjectState baseline is unavailable in the project"
+            )
+        try:
+            _, reference = self._states.read(state_path)
+        except ForgeGameError as exc:
+            raise WorkflowRuntimeError(
+                "Declared ProjectState baseline cannot be validated"
+            ) from exc
+        if (
+            reference.revision != project_state_base["revision"]
+            or reference.content_hash != project_state_base["content_hash"]
+        ):
+            raise WorkflowRuntimeError(
+                "Declared ProjectState baseline does not match the current snapshot"
+            )
+
     @staticmethod
     def _validate_sets(read_set: list[str], write_set: list[str]) -> None:
         for label, values in (("read_set", read_set), ("write_set", write_set)):
@@ -1556,6 +1728,13 @@ class WorkflowRuntime:
                 or len(values) != len(set(values))
             ):
                 raise WorkflowRuntimeError(f"{label} must contain unique strings")
+            for value in values:
+                try:
+                    validate_target_path(value)
+                except ForgeGameError as exc:
+                    raise WorkflowRuntimeError(
+                        f"{label} contains a non-canonical project path: {value!r}"
+                    ) from exc
 
     @staticmethod
     def _require_expected(

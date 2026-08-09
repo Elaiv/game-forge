@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "forge-game://schemas/phase-output/1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_id",
+    "schema_version",
+    "phase_id",
+    "summary",
+    "decisions",
+    "unresolved_risks"
+  ],
+  "properties": {
+    "schema_id": {"const": "forge-game://schemas/phase-output/1.0.0"},
+    "schema_version": {"const": "1.0.0"},
+    "phase_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "summary": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "decisions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["decision_id", "summary", "evidence_refs"],
+        "properties": {
+          "decision_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+          "summary": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+          "evidence_refs": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}
+          }
+        }
+      }
+    },
+    "unresolved_risks": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}
+    }
+  }
+}

@@ -334,7 +334,7 @@ class EngineeringRuleTests(unittest.TestCase):
                     "project_root": str(project),
                     "inputs": {"feature_id": "FEAT-001"},
                 },
-                project_state_base={"revision": 1, "content_hash": ZERO_HASH},
+                project_state_base={"revision": 0, "content_hash": None},
                 read_set=["Game.cpp"],
                 write_set=["Game.cpp"],
                 created_at="2026-08-08T12:00:00Z",

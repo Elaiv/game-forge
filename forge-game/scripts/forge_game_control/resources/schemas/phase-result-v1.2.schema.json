@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "forge-game://schemas/phase-result/1.2.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_id",
+    "schema_version",
+    "result_id",
+    "invocation_id",
+    "invocation_hash",
+    "run_id",
+    "workflow_id",
+    "workflow_version",
+    "phase_id",
+    "attempt",
+    "role",
+    "outcome",
+    "artifact_refs",
+    "evidence_refs",
+    "approval_refs",
+    "action_refs",
+    "guard_results",
+    "failure",
+    "completed_at",
+    "content_hash"
+  ],
+  "properties": {
+    "schema_id": {"const": "forge-game://schemas/phase-result/1.2.0"},
+    "schema_version": {"const": "1.2.0"},
+    "result_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "invocation_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "invocation_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+    "run_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "workflow_id": {"enum": ["bootstrap", "feature", "refresh", "release"]},
+    "workflow_version": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/semver"},
+    "phase_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "attempt": {"type": "integer", "minimum": 1},
+    "role": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "outcome": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "artifact_refs": {
+      "type": "array",
+      "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/artifactRef"}
+    },
+    "evidence_refs": {
+      "type": "array",
+      "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/artifactRef"}
+    },
+    "approval_refs": {"type": "array", "uniqueItems": true, "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}},
+    "action_refs": {"type": "array", "uniqueItems": true, "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}},
+    "guard_results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["guard_id", "status", "evidence_refs"],
+        "properties": {
+          "guard_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+          "status": {"enum": ["satisfied", "blocked"]},
+          "evidence_refs": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}
+          }
+        }
+      }
+    },
+    "failure": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["code", "message", "effect_status", "retryable"],
+          "properties": {
+            "code": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]+$"},
+            "message": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+            "effect_status": {"enum": ["none", "partial", "unknown"]},
+            "retryable": {"type": "boolean"}
+          }
+        }
+      ]
+    },
+    "completed_at": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/timestamp"},
+    "content_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+  }
+}

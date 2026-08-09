@@ -2,7 +2,7 @@
 
 `forge-game` is a Codex skill and deterministic control plane for governing Unreal Engine development from approved GDD and Roadmap inputs through project bootstrap, one-feature-at-a-time implementation, controlled refresh, and release readiness.
 
-> Status: **preview (`v0.11.0`)**. The contract kernel, policy gateway, workflow runtime, project-local templates, reconciliation, machine-verifiable engineering-rule compliance, local Git/build/test adapters, and the host-mediated Unreal MCP adapter are implemented and tested. Full Bootstrap, Feature, and Release execution is not yet claimed for every provider integration.
+> Status: **preview (`v0.12.0`)**. The contract kernel, policy gateway, workflow runtime, project-local templates, reconciliation, machine-verifiable engineering-rule compliance, local Git/build/test adapters, and the host-mediated Unreal MCP adapter are implemented and tested. Full Bootstrap, Feature, and Release execution is not yet claimed for every provider integration.
 
 ## Install
 

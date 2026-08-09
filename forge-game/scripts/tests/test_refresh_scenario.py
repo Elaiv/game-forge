@@ -17,6 +17,7 @@ from forge_game_control.merge_drivers import MergeDriverRegistry
 from forge_game_control.projection import ProjectionBuilder
 from forge_game_control.reconciliation import ReconciliationPlanner
 from forge_game_control.schemas import SchemaRegistry
+from forge_game_control.state import StateStore
 from forge_game_control.template_registry import TemplateRegistry, bytes_hash
 from forge_game_control.tool_adapters import ToolPlanBuilder
 from forge_game_control.tool_execution import ToolActionExecutor
@@ -72,6 +73,15 @@ class RefreshScenarioTests(unittest.TestCase):
             desired, desired_root = ProjectionBuilder(
                 self.schemas, TemplateRegistry(self.schemas)
             ).build(projection_input(ci_provider="none"), root / "desired")
+            state_path = project / ".forge-game" / "project-state.json"
+            state_path.parent.mkdir(parents=True)
+            shutil.copyfile(
+                desired_root / "files" / ".forge-game" / "project-state.json",
+                state_path,
+            )
+            run_git(project, "add", ".forge-game/project-state.json")
+            run_git(project, "commit", "-m", "Record forge-game baseline")
+            _, project_state_ref = StateStore(self.schemas).read(state_path)
             reconciliation, plan_root = ReconciliationPlanner(
                 self.schemas, MergeDriverRegistry()
             ).plan(
@@ -114,11 +124,25 @@ class RefreshScenarioTests(unittest.TestCase):
                     "schema_version": "1.0.0",
                     "entrypoint": "refresh",
                     "project_root": str(project),
-                    "inputs": {"target_forge_game_version": "0.11.0"},
+                    "inputs": {"target_forge_game_version": "0.12.0"},
                 },
-                project_state_base={"revision": 1, "content_hash": ZERO_HASH},
-                read_set=["GDD.md", "Roadmap.md"],
-                write_set=[".agents", ".codex", ".forge-game", "AGENTS.md"],
+                project_state_base={
+                    "revision": project_state_ref.revision,
+                    "content_hash": project_state_ref.content_hash,
+                },
+                read_set=[
+                    ".forge-game/project-state.json",
+                    "Build.sh",
+                    "GDD.md",
+                    "Roadmap.md",
+                ],
+                write_set=sorted(
+                    {
+                        ".forge-game/baselines",
+                        ".forge-game/manifests",
+                        *(item["target_path"] for item in desired["files"]),
+                    }
+                ),
                 created_at="2026-08-05T07:00:00Z",
                 run_id="run-refresh-scenario",
             )

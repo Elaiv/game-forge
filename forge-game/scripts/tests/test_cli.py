@@ -100,7 +100,7 @@ class CliTests(unittest.TestCase):
                         "project_id": "cli-test",
                         "revision": 1,
                         "previous_content_hash": None,
-                        "forge_game_version": "0.11.0",
+                        "forge_game_version": "0.12.0",
                         "workflow_versions": {"feature": "1.2.0"},
                         "template_version": "1.4.0",
                         "engineering_policy": {

@@ -16,6 +16,7 @@ from forge_game_control.content_addressing import envelope_content_hash
 from forge_game_control.errors import RunConflictError, RunLockError, WorkflowRuntimeError
 from forge_game_control.run_lock import RunFileLock
 from forge_game_control.schemas import SchemaRegistry
+from forge_game_control.state import StateStore
 from forge_game_control.workflow_runtime import WorkflowRuntime
 from forge_game_control.workflows import WorkflowRegistry
 
@@ -42,10 +43,44 @@ def start_request(project_root: Path) -> dict[str, object]:
     }
 
 
+def refresh_start_request(project_root: Path) -> dict[str, object]:
+    return {
+        "schema_id": "forge-game://schemas/start-run-request/1.0.0",
+        "schema_version": "1.0.0",
+        "entrypoint": "refresh",
+        "project_root": str(project_root.resolve()),
+        "inputs": {"target_forge_game_version": "0.12.0"},
+    }
+
+
+def project_state() -> dict[str, object]:
+    return {
+        "schema_id": "forge-game://schemas/project-state/1.0.0",
+        "schema_version": "1.0.0",
+        "project_id": "example-game",
+        "revision": 1,
+        "previous_content_hash": None,
+        "forge_game_version": "0.11.0",
+        "workflow_versions": {"refresh": "1.1.0"},
+        "template_version": "1.4.0",
+        "unreal": {
+            "engine_version": "pinned-test-version",
+            "toolchain_fingerprint": "test-toolchain",
+        },
+        "lifecycle_status": "active",
+        "source_baseline": None,
+        "refs": {},
+        "canonical_commands": [],
+        "feature_statuses": {},
+        "updated_at": "2026-08-04T12:00:00Z",
+    }
+
+
 def make_runtime(
     root: Path,
     *,
     execution_enabled: bool = False,
+    executable_action_ids: set[str] | None = None,
 ) -> tuple[WorkflowRuntime, SchemaRegistry]:
     schemas = SchemaRegistry()
     return (
@@ -56,6 +91,7 @@ def make_runtime(
             artifact_store_root=root / "artifacts",
             approval_store_root=root / "approvals",
             execution_enabled=execution_enabled,
+            executable_action_ids=executable_action_ids,
         ),
         schemas,
     )
@@ -65,6 +101,9 @@ def publish_phase_artifact(
     root: Path,
     schemas: SchemaRegistry,
     invocation: dict[str, object],
+    *,
+    artifact_type: str = "phase-output",
+    data: dict[str, object] | None = None,
 ) -> dict[str, object]:
     phase_id = str(invocation["phase_id"])
     artifact_id = phase_id.replace(".", "-") + f"-a{invocation['attempt']}"
@@ -78,7 +117,7 @@ def publish_phase_artifact(
         "schema_id": "forge-game://schemas/artifact/1.0.0",
         "schema_version": "1.0.0",
         "artifact_id": artifact_id,
-        "artifact_type": "phase-output",
+        "artifact_type": artifact_type,
         "revision": 1,
         "run_id": invocation["run_id"],
         "workflow_id": invocation["workflow_id"],
@@ -97,7 +136,15 @@ def publish_phase_artifact(
         ],
         "evidence": [],
         "status": "valid",
-        "data": {"phase_id": phase_id},
+        "data": data
+        or {
+            "schema_id": "forge-game://schemas/phase-output/1.0.0",
+            "schema_version": "1.0.0",
+            "phase_id": phase_id,
+            "summary": f"Completed {phase_id}",
+            "decisions": [],
+            "unresolved_risks": [],
+        },
         "content_hash": ZERO_HASH,
     }
     seal(artifact)
@@ -122,8 +169,8 @@ def phase_result(
     completed_at: str = "2026-08-04T12:00:02Z",
 ) -> dict[str, object]:
     result: dict[str, object] = {
-        "schema_id": "forge-game://schemas/phase-result/1.1.0",
-        "schema_version": "1.1.0",
+        "schema_id": "forge-game://schemas/phase-result/1.2.0",
+        "schema_version": "1.2.0",
         "result_id": f"result-{str(invocation['phase_id']).replace('.', '-')}-a{invocation['attempt']}",
         "invocation_id": invocation["invocation_id"],
         "invocation_hash": invocation["content_hash"],
@@ -138,6 +185,14 @@ def phase_result(
         "evidence_refs": [],
         "approval_refs": [],
         "action_refs": [],
+        "guard_results": [
+            {
+                "guard_id": guard_id,
+                "status": "satisfied",
+                "evidence_refs": [artifact_ref["artifact_id"]],
+            }
+            for guard_id in invocation["guards"]
+        ],
         "failure": failure,
         "completed_at": completed_at,
         "content_hash": ZERO_HASH,
@@ -165,10 +220,266 @@ def recovery_request(
 
 
 class WorkflowRuntimeTests(unittest.TestCase):
-    def test_action_phase_rejects_unstored_action_reference(self) -> None:
+    def test_start_binds_existing_project_state_snapshot(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            runtime, schemas = make_runtime(root)
+            reference = StateStore(schemas).write(
+                root / ".forge-game" / "project-state.json",
+                project_state(),
+                expected_revision=None,
+            )
+            started = runtime.start(
+                refresh_start_request(root),
+                project_state_base={
+                    "revision": reference.revision,
+                    "content_hash": reference.content_hash,
+                },
+                read_set=["GDD.md"],
+                write_set=[".forge-game"],
+                created_at="2026-08-04T12:00:00Z",
+                run_id="run-bound-state",
+            )
+            with self.assertRaisesRegex(WorkflowRuntimeError, "baseline"):
+                runtime.start(
+                    refresh_start_request(root),
+                    project_state_base={"revision": 1, "content_hash": ZERO_HASH},
+                    read_set=["GDD.md"],
+                    write_set=[".forge-game"],
+                    created_at="2026-08-04T12:00:00Z",
+                    run_id="run-forged-state",
+                )
+        self.assertEqual(started["state"]["project_state_base"]["revision"], 1)
+
+    def test_start_rejects_missing_declared_project_state(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            runtime, _ = make_runtime(root)
+            with self.assertRaisesRegex(WorkflowRuntimeError, "unavailable"):
+                runtime.start(
+                    refresh_start_request(root),
+                    project_state_base={"revision": 1, "content_hash": ZERO_HASH},
+                    read_set=[],
+                    write_set=[],
+                    created_at="2026-08-04T12:00:00Z",
+                    run_id="run-missing-state",
+                )
+
+    def test_execution_enabled_cannot_bypass_missing_executor(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()
             runtime, schemas = make_runtime(root, execution_enabled=True)
+            started = runtime.start(
+                start_request(root),
+                project_state_base={"revision": 0, "content_hash": None},
+                read_set=[],
+                write_set=[],
+                created_at="2026-08-04T12:00:00Z",
+                run_id="run-missing-executor",
+            )
+            discovery = runtime.prepare(
+                "run-missing-executor",
+                expected_revision=started["snapshot"]["revision"],
+                expected_hash=started["snapshot"]["content_hash"],
+                prepared_at="2026-08-04T12:00:01Z",
+            )
+            discovery_ref = publish_phase_artifact(root, schemas, discovery["invocation"])
+            advanced = runtime.record_result(
+                "run-missing-executor",
+                phase_result(discovery["invocation"], discovery_ref),
+                expected_revision=discovery["snapshot"]["revision"],
+                expected_hash=discovery["snapshot"]["content_hash"],
+            )
+            blocked = runtime.prepare(
+                "run-missing-executor",
+                expected_revision=advanced["snapshot"]["revision"],
+                expected_hash=advanced["snapshot"]["content_hash"],
+                prepared_at="2026-08-04T12:00:03Z",
+            )
+        self.assertEqual(blocked["state"]["status"], "blocked")
+        self.assertIn("network.fetch", blocked["state"]["failure"]["message"])
+
+    def test_successful_action_phase_requires_every_declared_action(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            runtime, schemas = make_runtime(
+                root,
+                execution_enabled=True,
+                executable_action_ids={"network.fetch"},
+            )
+            started = runtime.start(
+                start_request(root),
+                project_state_base={"revision": 0, "content_hash": None},
+                read_set=[],
+                write_set=[],
+                created_at="2026-08-04T12:00:00Z",
+                run_id="run-action-coverage",
+            )
+            discovery = runtime.prepare(
+                "run-action-coverage",
+                expected_revision=started["snapshot"]["revision"],
+                expected_hash=started["snapshot"]["content_hash"],
+                prepared_at="2026-08-04T12:00:01Z",
+            )
+            discovery_ref = publish_phase_artifact(root, schemas, discovery["invocation"])
+            advanced = runtime.record_result(
+                "run-action-coverage",
+                phase_result(discovery["invocation"], discovery_ref),
+                expected_revision=discovery["snapshot"]["revision"],
+                expected_hash=discovery["snapshot"]["content_hash"],
+            )
+            architecture = runtime.prepare(
+                "run-action-coverage",
+                expected_revision=advanced["snapshot"]["revision"],
+                expected_hash=advanced["snapshot"]["content_hash"],
+                prepared_at="2026-08-04T12:00:03Z",
+            )
+            architecture_ref = publish_phase_artifact(
+                root, schemas, architecture["invocation"]
+            )
+            with self.assertRaisesRegex(WorkflowRuntimeError, "missing required actions"):
+                runtime.record_result(
+                    "run-action-coverage",
+                    phase_result(
+                        architecture["invocation"],
+                        architecture_ref,
+                        completed_at="2026-08-04T12:00:04Z",
+                    ),
+                    expected_revision=architecture["snapshot"]["revision"],
+                    expected_hash=architecture["snapshot"]["content_hash"],
+                )
+
+    def test_successful_phase_requires_exact_satisfied_guards(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            runtime, schemas = make_runtime(root)
+            started = runtime.start(
+                start_request(root),
+                project_state_base={"revision": 0, "content_hash": None},
+                read_set=[],
+                write_set=[],
+                created_at="2026-08-04T12:00:00Z",
+                run_id="run-guard-results",
+            )
+            prepared = runtime.prepare(
+                "run-guard-results",
+                expected_revision=started["snapshot"]["revision"],
+                expected_hash=started["snapshot"]["content_hash"],
+                prepared_at="2026-08-04T12:00:01Z",
+            )
+            reference = publish_phase_artifact(root, schemas, prepared["invocation"])
+            result = phase_result(prepared["invocation"], reference)
+            result["guard_results"] = []
+            seal(result)
+            with self.assertRaisesRegex(WorkflowRuntimeError, "guard results"):
+                runtime.record_result(
+                    "run-guard-results",
+                    result,
+                    expected_revision=prepared["snapshot"]["revision"],
+                    expected_hash=prepared["snapshot"]["content_hash"],
+                )
+
+    def test_successful_guard_results_require_bound_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            runtime, schemas = make_runtime(root)
+            started = runtime.start(
+                start_request(root),
+                project_state_base={"revision": 0, "content_hash": None},
+                read_set=[],
+                write_set=[],
+                created_at="2026-08-04T12:00:00Z",
+                run_id="run-guard-evidence",
+            )
+            prepared = runtime.prepare(
+                "run-guard-evidence",
+                expected_revision=started["snapshot"]["revision"],
+                expected_hash=started["snapshot"]["content_hash"],
+                prepared_at="2026-08-04T12:00:01Z",
+            )
+            reference = publish_phase_artifact(root, schemas, prepared["invocation"])
+            result = phase_result(prepared["invocation"], reference)
+            result["guard_results"][0]["evidence_refs"] = ["invented-evidence"]
+            seal(result)
+            with self.assertRaisesRegex(WorkflowRuntimeError, "guard evidence"):
+                runtime.record_result(
+                    "run-guard-evidence",
+                    result,
+                    expected_revision=prepared["snapshot"]["revision"],
+                    expected_hash=prepared["snapshot"]["content_hash"],
+                )
+
+    def test_start_rejects_unbounded_or_traversing_scope(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            runtime, _ = make_runtime(root)
+            for read_set in (["."], ["../outside"]):
+                with self.subTest(read_set=read_set):
+                    with self.assertRaisesRegex(WorkflowRuntimeError, "non-canonical"):
+                        runtime.start(
+                            start_request(root),
+                            project_state_base={"revision": 0, "content_hash": None},
+                            read_set=read_set,
+                            write_set=[],
+                            created_at="2026-08-04T12:00:00Z",
+                        )
+
+    def test_action_target_must_be_inside_bound_write_set(self) -> None:
+        with self.assertRaisesRegex(WorkflowRuntimeError, "outside the run write_set"):
+            WorkflowRuntime._validate_action_scope(
+                {
+                    "action_class": "project_file_mutation",
+                    "targets": [
+                        {
+                            "kind": "path",
+                            "value": "Config/DefaultGame.ini",
+                        }
+                    ],
+                },
+                {"read_set": [], "write_set": ["Source/Core"]},
+            )
+
+    def test_generic_phase_rejects_untyped_output_artifact(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            runtime, schemas = make_runtime(root)
+            started = runtime.start(
+                start_request(root),
+                project_state_base={"revision": 0, "content_hash": None},
+                read_set=[],
+                write_set=[],
+                created_at="2026-08-04T12:00:00Z",
+                run_id="run-untyped-output",
+            )
+            prepared = runtime.prepare(
+                "run-untyped-output",
+                expected_revision=started["snapshot"]["revision"],
+                expected_hash=started["snapshot"]["content_hash"],
+                prepared_at="2026-08-04T12:00:01Z",
+            )
+            reference = publish_phase_artifact(
+                root,
+                schemas,
+                prepared["invocation"],
+                artifact_type="legacy-freeform-output",
+                data={"phase_id": prepared["invocation"]["phase_id"]},
+            )
+            with self.assertRaisesRegex(WorkflowRuntimeError, "not declared"):
+                runtime.record_result(
+                    "run-untyped-output",
+                    phase_result(prepared["invocation"], reference),
+                    expected_revision=prepared["snapshot"]["revision"],
+                    expected_hash=prepared["snapshot"]["content_hash"],
+                )
+
+    def test_action_phase_rejects_unstored_action_reference(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            runtime, schemas = make_runtime(
+                root,
+                execution_enabled=True,
+                executable_action_ids={"network.fetch"},
+            )
             started = runtime.start(
                 start_request(root),
                 project_state_base={"revision": 0, "content_hash": None},
@@ -577,16 +888,16 @@ class WorkflowRuntimeTests(unittest.TestCase):
     def test_human_gate_accepts_only_exact_stored_approval(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()
-            runtime, schemas = make_runtime(root, execution_enabled=True)
+            runtime, schemas = make_runtime(root)
             response = runtime.start(
-                start_request(root),
+                refresh_start_request(root),
                 project_state_base={"revision": 0, "content_hash": None},
                 read_set=[],
                 write_set=[],
                 created_at="2026-08-04T12:00:00Z",
                 run_id="run-gate",
             )
-            for index in range(4):
+            for index in range(3):
                 prepared = runtime.prepare(
                     "run-gate",
                     expected_revision=response["snapshot"]["revision"],
@@ -599,12 +910,7 @@ class WorkflowRuntimeTests(unittest.TestCase):
                     phase_result(
                         prepared["invocation"],
                         reference,
-                        outcome=(
-                            "approved"
-                            if prepared["invocation"]["phase_id"]
-                            == "bootstrap.architecture_review"
-                            else "success"
-                        ),
+                        outcome="success",
                         completed_at=f"2026-08-04T12:00:{index * 2 + 2:02d}Z",
                     ),
                     expected_revision=prepared["snapshot"]["revision"],
@@ -634,7 +940,7 @@ class WorkflowRuntimeTests(unittest.TestCase):
                 "schema_version": "1.0.0",
                 "approval_id": "approval-gate-001",
                 "run_id": "run-gate",
-                "workflow_id": "bootstrap",
+                "workflow_id": "refresh",
                 "gate_id": gate["gate_id"],
                 "phase_id": gate["phase_id"],
                 "decision": "approve",
@@ -673,7 +979,7 @@ class WorkflowRuntimeTests(unittest.TestCase):
         self.assertEqual(gate["requested_at"], "2026-08-04T12:00:09Z")
         self.assertEqual(
             accepted["state"]["current_phase"],
-            "bootstrap.reconciliation_plan",
+            "refresh.apply",
         )
         self.assertEqual(accepted["approval_verification"]["status"], "valid")
 
