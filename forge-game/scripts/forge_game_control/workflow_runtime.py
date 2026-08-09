@@ -45,8 +45,15 @@ from .workflows import TERMINAL_TARGETS, WorkflowRegistry
 START_REQUEST_SCHEMA_ID = "forge-game://schemas/start-run-request/1.0.0"
 RUN_START_SCHEMA_ID = "forge-game://schemas/run-start-record/1.0.0"
 RUN_STATE_SCHEMA_ID = "forge-game://schemas/run-state/1.0.0"
-INVOCATION_SCHEMA_ID = "forge-game://schemas/phase-invocation/1.2.0"
-LEGACY_INVOCATION_SCHEMA_ID = "forge-game://schemas/phase-invocation/1.1.0"
+INVOCATION_SCHEMA_ID = "forge-game://schemas/phase-invocation/1.3.0"
+LEGACY_INVOCATION_SCHEMA_IDS = {
+    "forge-game://schemas/phase-invocation/1.1.0",
+    "forge-game://schemas/phase-invocation/1.2.0",
+}
+START_BOUND_INVOCATION_SCHEMA_IDS = {
+    INVOCATION_SCHEMA_ID,
+    "forge-game://schemas/phase-invocation/1.2.0",
+}
 RESULT_SCHEMA_ID = "forge-game://schemas/phase-result/1.2.0"
 GATE_REQUEST_SCHEMA_ID = "forge-game://schemas/gate-request/1.0.0"
 TRANSITION_SCHEMA_ID = "forge-game://schemas/transition-record/1.0.0"
@@ -746,7 +753,7 @@ class WorkflowRuntime:
         role = phase["executor_role"]
         invocation = {
             "schema_id": INVOCATION_SCHEMA_ID,
-            "schema_version": "1.2.0",
+            "schema_version": "1.3.0",
             "invocation_id": f"{state['run_id']}-{state['current_phase'].replace('.', '-')}-a{state['attempt']}",
             "run_id": state["run_id"],
             "workflow_id": workflow["workflow_id"],
@@ -764,6 +771,9 @@ class WorkflowRuntime:
             "guards": phase["guards"],
             "capabilities": phase["capabilities"],
             "allowed_actions": phase["allowed_actions"],
+            "required_actions": phase.get(
+                "required_actions", phase["allowed_actions"]
+            ),
             "expected_output_schema_ids": phase["produces"],
             "created_at": created_at,
             "content_hash": "sha256:" + "0" * 64,
@@ -1017,7 +1027,10 @@ class WorkflowRuntime:
                     "Successful PhaseResult can only reference succeeded actions"
                 )
         if result["failure"] is None:
-            missing = sorted(set(phase["allowed_actions"]) - referenced_actions)
+            missing = sorted(
+                set(phase.get("required_actions", phase["allowed_actions"]))
+                - referenced_actions
+            )
             if missing:
                 raise WorkflowRuntimeError(
                     "Successful PhaseResult is missing required actions: "
@@ -1396,7 +1409,7 @@ class WorkflowRuntime:
                 raise WorkflowRuntimeError(
                     f"PhaseInvocation {field} does not match current RunState"
                 )
-        if invocation["schema_id"] == INVOCATION_SCHEMA_ID:
+        if invocation["schema_id"] in START_BOUND_INVOCATION_SCHEMA_IDS:
             start_record = self._load_record(
                 run_directory / "start.json",
                 RUN_START_SCHEMA_ID,
@@ -1418,7 +1431,10 @@ class WorkflowRuntime:
         if not isinstance(invocation, dict):
             raise WorkflowRuntimeError("PhaseInvocation must be a JSON object")
         schema_id = invocation.get("schema_id")
-        if schema_id not in (INVOCATION_SCHEMA_ID, LEGACY_INVOCATION_SCHEMA_ID):
+        if (
+            schema_id != INVOCATION_SCHEMA_ID
+            and schema_id not in LEGACY_INVOCATION_SCHEMA_IDS
+        ):
             raise WorkflowRuntimeError(
                 f"Unsupported PhaseInvocation schema: {schema_id!r}"
             )
@@ -1455,6 +1471,18 @@ class WorkflowRuntime:
             "allowed_actions": phase["allowed_actions"],
             "expected_output_schema_ids": phase["produces"],
         }
+        if invocation["schema_id"] == "forge-game://schemas/phase-invocation/1.2.0":
+            start_record = self._load_record(
+                self._run_directory(state["run_id"]) / "start.json",
+                RUN_START_SCHEMA_ID,
+                "RunStartRecord",
+            )
+            expected.update(
+                {
+                    "run_start_hash": start_record["content_hash"],
+                    "start_request": start_record["request"],
+                }
+            )
         for field, value in expected.items():
             if invocation[field] != value:
                 raise RunConflictError(

@@ -49,7 +49,7 @@ def refresh_start_request(project_root: Path) -> dict[str, object]:
         "schema_version": "1.0.0",
         "entrypoint": "refresh",
         "project_root": str(project_root.resolve()),
-        "inputs": {"target_forge_game_version": "0.12.0"},
+        "inputs": {"target_forge_game_version": "0.13.0"},
     }
 
 
@@ -76,17 +76,46 @@ def project_state() -> dict[str, object]:
     }
 
 
+def action_workflow(*, required_actions: list[str]) -> dict[str, object]:
+    return {
+        "schema_id": "forge-game://schemas/workflow-definition/1.1.0",
+        "schema_version": "1.1.0",
+        "workflow_id": "bootstrap",
+        "version": "9.0.0",
+        "start_request_schema_id": "forge-game://schemas/start-run-request/1.0.0",
+        "entry_phase": "bootstrap.action",
+        "phases": {
+            "bootstrap.action": {
+                "phase_id": "bootstrap.action",
+                "executor_role": "architect",
+                "purpose": "Exercise action requirements.",
+                "allowed_run_statuses": ["ready", "running"],
+                "requires": [],
+                "guards": ["action.ready"],
+                "capabilities": ["research.fetch"],
+                "allowed_actions": ["network.fetch"],
+                "required_actions": required_actions,
+                "produces": ["forge-game://schemas/artifact/1.0.0"],
+                "gate": None,
+                "transitions": {"success": "$completed"},
+                "checkpoint": True,
+            }
+        },
+    }
+
+
 def make_runtime(
     root: Path,
     *,
     execution_enabled: bool = False,
     executable_action_ids: set[str] | None = None,
+    workflow_definitions: list[dict[str, object]] | None = None,
 ) -> tuple[WorkflowRuntime, SchemaRegistry]:
     schemas = SchemaRegistry()
     return (
         WorkflowRuntime(
             schemas,
-            WorkflowRegistry(schemas),
+            WorkflowRegistry(schemas, workflow_definitions),
             root / "runtime",
             artifact_store_root=root / "artifacts",
             approval_store_root=root / "approvals",
@@ -268,7 +297,13 @@ class WorkflowRuntimeTests(unittest.TestCase):
     def test_execution_enabled_cannot_bypass_missing_executor(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()
-            runtime, schemas = make_runtime(root, execution_enabled=True)
+            runtime, _ = make_runtime(
+                root,
+                execution_enabled=True,
+                workflow_definitions=[
+                    action_workflow(required_actions=["network.fetch"])
+                ],
+            )
             started = runtime.start(
                 start_request(root),
                 project_state_base={"revision": 0, "content_hash": None},
@@ -277,35 +312,25 @@ class WorkflowRuntimeTests(unittest.TestCase):
                 created_at="2026-08-04T12:00:00Z",
                 run_id="run-missing-executor",
             )
-            discovery = runtime.prepare(
+            blocked = runtime.prepare(
                 "run-missing-executor",
                 expected_revision=started["snapshot"]["revision"],
                 expected_hash=started["snapshot"]["content_hash"],
                 prepared_at="2026-08-04T12:00:01Z",
             )
-            discovery_ref = publish_phase_artifact(root, schemas, discovery["invocation"])
-            advanced = runtime.record_result(
-                "run-missing-executor",
-                phase_result(discovery["invocation"], discovery_ref),
-                expected_revision=discovery["snapshot"]["revision"],
-                expected_hash=discovery["snapshot"]["content_hash"],
-            )
-            blocked = runtime.prepare(
-                "run-missing-executor",
-                expected_revision=advanced["snapshot"]["revision"],
-                expected_hash=advanced["snapshot"]["content_hash"],
-                prepared_at="2026-08-04T12:00:03Z",
-            )
         self.assertEqual(blocked["state"]["status"], "blocked")
         self.assertIn("network.fetch", blocked["state"]["failure"]["message"])
 
-    def test_successful_action_phase_requires_every_declared_action(self) -> None:
+    def test_successful_action_phase_requires_every_required_action(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()
             runtime, schemas = make_runtime(
                 root,
                 execution_enabled=True,
                 executable_action_ids={"network.fetch"},
+                workflow_definitions=[
+                    action_workflow(required_actions=["network.fetch"])
+                ],
             )
             started = runtime.start(
                 start_request(root),
@@ -315,39 +340,56 @@ class WorkflowRuntimeTests(unittest.TestCase):
                 created_at="2026-08-04T12:00:00Z",
                 run_id="run-action-coverage",
             )
-            discovery = runtime.prepare(
+            prepared = runtime.prepare(
                 "run-action-coverage",
                 expected_revision=started["snapshot"]["revision"],
                 expected_hash=started["snapshot"]["content_hash"],
                 prepared_at="2026-08-04T12:00:01Z",
             )
-            discovery_ref = publish_phase_artifact(root, schemas, discovery["invocation"])
-            advanced = runtime.record_result(
-                "run-action-coverage",
-                phase_result(discovery["invocation"], discovery_ref),
-                expected_revision=discovery["snapshot"]["revision"],
-                expected_hash=discovery["snapshot"]["content_hash"],
-            )
-            architecture = runtime.prepare(
-                "run-action-coverage",
-                expected_revision=advanced["snapshot"]["revision"],
-                expected_hash=advanced["snapshot"]["content_hash"],
-                prepared_at="2026-08-04T12:00:03Z",
-            )
-            architecture_ref = publish_phase_artifact(
-                root, schemas, architecture["invocation"]
+            reference = publish_phase_artifact(
+                root, schemas, prepared["invocation"]
             )
             with self.assertRaisesRegex(WorkflowRuntimeError, "missing required actions"):
                 runtime.record_result(
                     "run-action-coverage",
                     phase_result(
-                        architecture["invocation"],
-                        architecture_ref,
-                        completed_at="2026-08-04T12:00:04Z",
+                        prepared["invocation"],
+                        reference,
                     ),
-                    expected_revision=architecture["snapshot"]["revision"],
-                    expected_hash=architecture["snapshot"]["content_hash"],
+                    expected_revision=prepared["snapshot"]["revision"],
+                    expected_hash=prepared["snapshot"]["content_hash"],
                 )
+
+    def test_successful_action_phase_may_omit_optional_action(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            runtime, schemas = make_runtime(
+                root,
+                executable_action_ids={"network.fetch"},
+                workflow_definitions=[action_workflow(required_actions=[])],
+            )
+            started = runtime.start(
+                start_request(root),
+                project_state_base={"revision": 0, "content_hash": None},
+                read_set=[],
+                write_set=[],
+                created_at="2026-08-04T12:00:00Z",
+                run_id="run-optional-action",
+            )
+            prepared = runtime.prepare(
+                "run-optional-action",
+                expected_revision=started["snapshot"]["revision"],
+                expected_hash=started["snapshot"]["content_hash"],
+                prepared_at="2026-08-04T12:00:01Z",
+            )
+            reference = publish_phase_artifact(root, schemas, prepared["invocation"])
+            completed = runtime.record_result(
+                "run-optional-action",
+                phase_result(prepared["invocation"], reference),
+                expected_revision=prepared["snapshot"]["revision"],
+                expected_hash=prepared["snapshot"]["content_hash"],
+            )
+        self.assertEqual(completed["state"]["status"], "completed")
 
     def test_successful_phase_requires_exact_satisfied_guards(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -479,6 +521,9 @@ class WorkflowRuntimeTests(unittest.TestCase):
                 root,
                 execution_enabled=True,
                 executable_action_ids={"network.fetch"},
+                workflow_definitions=[
+                    action_workflow(required_actions=["network.fetch"])
+                ],
             )
             started = runtime.start(
                 start_request(root),
@@ -488,34 +533,18 @@ class WorkflowRuntimeTests(unittest.TestCase):
                 created_at="2026-08-04T12:00:00Z",
                 run_id="run-action-ref",
             )
-            discovery = runtime.prepare(
+            prepared = runtime.prepare(
                 "run-action-ref",
                 expected_revision=started["snapshot"]["revision"],
                 expected_hash=started["snapshot"]["content_hash"],
                 prepared_at="2026-08-04T12:00:01Z",
             )
-            discovery_ref = publish_phase_artifact(
-                root, schemas, discovery["invocation"]
-            )
-            advanced = runtime.record_result(
-                "run-action-ref",
-                phase_result(discovery["invocation"], discovery_ref),
-                expected_revision=discovery["snapshot"]["revision"],
-                expected_hash=discovery["snapshot"]["content_hash"],
-            )
-            architecture = runtime.prepare(
-                "run-action-ref",
-                expected_revision=advanced["snapshot"]["revision"],
-                expected_hash=advanced["snapshot"]["content_hash"],
-                prepared_at="2026-08-04T12:00:03Z",
-            )
-            architecture_ref = publish_phase_artifact(
-                root, schemas, architecture["invocation"]
+            reference = publish_phase_artifact(
+                root, schemas, prepared["invocation"]
             )
             forged = phase_result(
-                architecture["invocation"],
-                architecture_ref,
-                completed_at="2026-08-04T12:00:04Z",
+                prepared["invocation"],
+                reference,
             )
             forged["action_refs"] = ["forged-action-result"]
             seal(forged)
@@ -525,11 +554,11 @@ class WorkflowRuntimeTests(unittest.TestCase):
                 runtime.record_result(
                     "run-action-ref",
                     forged,
-                    expected_revision=architecture["snapshot"]["revision"],
-                    expected_hash=architecture["snapshot"]["content_hash"],
+                    expected_revision=prepared["snapshot"]["revision"],
+                    expected_hash=prepared["snapshot"]["content_hash"],
                 )
 
-    def test_start_prepare_result_resume_and_executor_boundary(self) -> None:
+    def test_start_prepare_result_and_resume(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()
             runtime, schemas = make_runtime(root)
@@ -555,16 +584,10 @@ class WorkflowRuntimeTests(unittest.TestCase):
                 expected_hash=prepared["snapshot"]["content_hash"],
             )
             resumed = runtime.resume("run-basic")
-            blocked = runtime.prepare(
-                "run-basic",
-                expected_revision=transitioned["snapshot"]["revision"],
-                expected_hash=transitioned["snapshot"]["content_hash"],
-                prepared_at="2026-08-04T12:00:03Z",
-            )
-            retried = runtime.recover(recovery_request(blocked))
         self.assertEqual(started["state"]["status"], "ready")
         self.assertEqual(prepared["state"]["status"], "running")
-        self.assertEqual(prepared["invocation"]["schema_version"], "1.2.0")
+        self.assertEqual(prepared["invocation"]["schema_version"], "1.3.0")
+        self.assertEqual(prepared["invocation"]["required_actions"], [])
         self.assertEqual(
             prepared["invocation"]["start_request"],
             start_request(root),
@@ -575,13 +598,6 @@ class WorkflowRuntimeTests(unittest.TestCase):
         )
         self.assertEqual(transitioned["state"]["current_phase"], "bootstrap.architecture")
         self.assertEqual(resumed["snapshot"], transitioned["snapshot"])
-        self.assertEqual(blocked["state"]["status"], "blocked")
-        self.assertEqual(
-            blocked["state"]["failure"]["code"],
-            "runtime.action_execution_unavailable",
-        )
-        self.assertEqual(retried["state"]["status"], "ready")
-        self.assertEqual(retried["state"]["attempt"], 2)
 
     def test_prepare_reuses_matching_invocation_after_interrupted_checkpoint(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -660,6 +676,7 @@ class WorkflowRuntimeTests(unittest.TestCase):
             legacy["schema_version"] = "1.1.0"
             legacy.pop("run_start_hash")
             legacy.pop("start_request")
+            legacy.pop("required_actions")
             seal(legacy)
             path.write_text(json.dumps(legacy), encoding="utf-8")
             prepared = runtime.prepare(
@@ -670,6 +687,53 @@ class WorkflowRuntimeTests(unittest.TestCase):
             )
         self.assertEqual(prepared["state"]["status"], "running")
         self.assertEqual(prepared["invocation"]["schema_version"], "1.1.0")
+
+    def test_prepare_can_finish_legacy_v12_interrupted_invocation(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            runtime, _ = make_runtime(root)
+            started = runtime.start(
+                start_request(root),
+                project_state_base={"revision": 0, "content_hash": None},
+                read_set=[],
+                write_set=[],
+                created_at="2026-08-04T12:00:00Z",
+                run_id="run-legacy-v12-invocation",
+            )
+            with patch.object(
+                runtime,
+                "_write_snapshot",
+                side_effect=OSError("simulated old runtime interruption"),
+            ):
+                with self.assertRaises(OSError):
+                    runtime.prepare(
+                        "run-legacy-v12-invocation",
+                        expected_revision=1,
+                        expected_hash=started["snapshot"]["content_hash"],
+                        prepared_at="2026-08-04T12:00:01Z",
+                    )
+            path = (
+                root
+                / "runtime"
+                / "run-legacy-v12-invocation"
+                / "invocations"
+                / "bootstrap.discovery"
+                / "a1.json"
+            )
+            legacy = json.loads(path.read_text(encoding="utf-8"))
+            legacy["schema_id"] = "forge-game://schemas/phase-invocation/1.2.0"
+            legacy["schema_version"] = "1.2.0"
+            legacy.pop("required_actions")
+            seal(legacy)
+            path.write_text(json.dumps(legacy), encoding="utf-8")
+            prepared = runtime.prepare(
+                "run-legacy-v12-invocation",
+                expected_revision=1,
+                expected_hash=started["snapshot"]["content_hash"],
+                prepared_at="2026-08-04T12:00:02Z",
+            )
+        self.assertEqual(prepared["state"]["status"], "running")
+        self.assertEqual(prepared["invocation"]["schema_version"], "1.2.0")
 
     def test_stale_checkpoint_is_rejected_without_state_change(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

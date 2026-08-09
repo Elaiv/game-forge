@@ -8,7 +8,8 @@ from .json_io import load_json
 from .schemas import SchemaRegistry
 
 
-WORKFLOW_SCHEMA_ID = "forge-game://schemas/workflow-definition/1.0.0"
+WORKFLOW_SCHEMA_ID = "forge-game://schemas/workflow-definition/1.1.0"
+LEGACY_WORKFLOW_SCHEMA_ID = "forge-game://schemas/workflow-definition/1.0.0"
 WORKFLOW_PACKAGE = "forge_game_control.resources"
 TERMINAL_TARGETS = {"$completed", "$blocked", "$cancelled", "$failed"}
 
@@ -22,7 +23,12 @@ class WorkflowRegistry:
         loaded = list(definitions) if definitions is not None else self._load_packaged_workflows()
         self._workflows: dict[str, dict[str, Any]] = {}
         for definition in loaded:
-            schema_registry.validate(definition, WORKFLOW_SCHEMA_ID)
+            schema_id = definition.get("schema_id")
+            if schema_id not in {WORKFLOW_SCHEMA_ID, LEGACY_WORKFLOW_SCHEMA_ID}:
+                raise WorkflowRegistryError(
+                    f"Unsupported workflow schema: {schema_id!r}"
+                )
+            schema_registry.validate(definition, schema_id)
             workflow_id = definition["workflow_id"]
             if workflow_id in self._workflows:
                 raise WorkflowRegistryError(f"Duplicate workflow_id: {workflow_id}")
@@ -72,6 +78,13 @@ class WorkflowRegistry:
             ):
                 raise WorkflowRegistryError(
                     f"Gate decisions and transitions differ for phase {phase_id}"
+                )
+            required_actions = phase.get(
+                "required_actions", phase["allowed_actions"]
+            )
+            if not set(required_actions).issubset(set(phase["allowed_actions"])):
+                raise WorkflowRegistryError(
+                    f"Phase {phase_id} required_actions must be a subset of allowed_actions"
                 )
             for schema_id in [*phase["requires"], *phase["produces"]]:
                 if not schemas.has(schema_id):

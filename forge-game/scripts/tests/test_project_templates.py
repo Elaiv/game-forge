@@ -49,7 +49,7 @@ class ProjectTemplateTests(unittest.TestCase):
 
     def test_manifest_and_sources_are_hash_verified(self) -> None:
         self.assertEqual(len(self.templates.templates()), 21)
-        self.assertEqual(self.templates.template_set_version, "1.4.0")
+        self.assertEqual(self.templates.template_set_version, "1.5.0")
         with tempfile.TemporaryDirectory() as directory:
             copied = Path(directory, "project-local")
             shutil.copytree(self.templates.asset_root, copied)

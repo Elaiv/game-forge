@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "forge-game://schemas/workflow-definition/1.1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_id", "schema_version", "workflow_id", "version", "start_request_schema_id", "entry_phase", "phases"],
+  "properties": {
+    "schema_id": {"const": "forge-game://schemas/workflow-definition/1.1.0"},
+    "schema_version": {"const": "1.1.0"},
+    "workflow_id": {"enum": ["bootstrap", "feature", "refresh", "release"]},
+    "version": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/semver"},
+    "start_request_schema_id": {"type": "string", "minLength": 1},
+    "entry_phase": {"type": "string", "minLength": 1},
+    "phases": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {"$ref": "#/$defs/phase"}
+    }
+  },
+  "$defs": {
+    "phase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["phase_id", "executor_role", "purpose", "allowed_run_statuses", "requires", "guards", "capabilities", "allowed_actions", "produces", "gate", "transitions", "checkpoint"],
+      "properties": {
+        "phase_id": {"type": "string", "minLength": 1},
+        "executor_role": {
+          "enum": ["orchestrator", "analyst", "architect", "implementer", "test_agent", "reviewer", "verifier", "human"]
+        },
+        "purpose": {"type": "string", "minLength": 1},
+        "allowed_run_statuses": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"enum": ["ready", "running", "waiting_human", "blocked"]}
+        },
+        "requires": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "guards": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "capabilities": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "allowed_actions": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "required_actions": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "produces": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "gate": {
+          "oneOf": [
+            {"type": "null"},
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["gate_id", "decisions"],
+              "properties": {
+                "gate_id": {"type": "string", "minLength": 1},
+                "decisions": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+              }
+            }
+          ]
+        },
+        "transitions": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {"type": "string", "minLength": 1}
+        },
+        "checkpoint": {"type": "boolean"}
+      }
+    }
+  }
+}

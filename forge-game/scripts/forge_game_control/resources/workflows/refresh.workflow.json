@@ -1,8 +1,8 @@
 {
-  "schema_id": "forge-game://schemas/workflow-definition/1.0.0",
-  "schema_version": "1.0.0",
+  "schema_id": "forge-game://schemas/workflow-definition/1.1.0",
+  "schema_version": "1.1.0",
   "workflow_id": "refresh",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "start_request_schema_id": "forge-game://schemas/start-run-request/1.0.0",
   "entry_phase": "refresh.discovery",
   "phases": {
@@ -71,6 +71,7 @@
       "guards": ["approval.refresh_apply_valid", "host.write_satisfied", "reconciliation.inputs_unchanged"],
       "capabilities": ["filesystem.write", "git.write"],
       "allowed_actions": ["project.patch.apply", "project.files.apply", "git.commit"],
+      "required_actions": ["project.files.apply", "git.commit"],
       "produces": ["forge-game://schemas/artifact/1.0.0"],
       "gate": null,
       "transitions": {"success": "refresh.verify", "failed": "refresh.reconciliation_plan", "unknown_effect": "$blocked"},
@@ -85,6 +86,7 @@
       "guards": ["refresh.apply_result_valid"],
       "capabilities": ["filesystem.read", "build.preflight"],
       "allowed_actions": ["build.preflight"],
+      "required_actions": ["build.preflight"],
       "produces": ["forge-game://schemas/artifact/1.0.0"],
       "gate": null,
       "transitions": {"verified": "refresh.acceptance", "failed": "refresh.reconciliation_plan"},

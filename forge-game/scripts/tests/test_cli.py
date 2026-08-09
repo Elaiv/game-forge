@@ -57,7 +57,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertEqual(stderr, "")
         self.assertTrue(response["ok"])
-        self.assertEqual(response["data"]["template_set_version"], "1.4.0")
+        self.assertEqual(response["data"]["template_set_version"], "1.5.0")
         self.assertEqual(len(response["data"]["template_ids"]), 21)
 
     def test_engineering_status_binds_catalog_and_repository_snapshot(self) -> None:
@@ -100,9 +100,9 @@ class CliTests(unittest.TestCase):
                         "project_id": "cli-test",
                         "revision": 1,
                         "previous_content_hash": None,
-                        "forge_game_version": "0.12.0",
-                        "workflow_versions": {"feature": "1.2.0"},
-                        "template_version": "1.4.0",
+                        "forge_game_version": "0.13.0",
+                        "workflow_versions": {"feature": "1.3.0"},
+                        "template_version": "1.5.0",
                         "engineering_policy": {
                             key: value
                             for key, value in catalog.metadata().items()

@@ -31,7 +31,7 @@ def action_intent(**overrides: object) -> dict[str, object]:
         "intent_id": "intent-001",
         "run_id": "run-001",
         "workflow_id": "bootstrap",
-        "workflow_version": "1.1.0",
+        "workflow_version": "1.2.0",
         "phase_id": "bootstrap.apply",
         "attempt": 1,
         "role": "orchestrator",
@@ -94,7 +94,7 @@ def policy_context(project_root: Path, **overrides: object) -> dict[str, object]
         "run_context": {
             "run_id": "run-001",
             "workflow_id": "bootstrap",
-            "workflow_version": "1.1.0",
+            "workflow_version": "1.2.0",
             "phase_id": "bootstrap.apply",
             "attempt": 1,
             "role": "orchestrator",

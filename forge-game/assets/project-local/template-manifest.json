@@ -2,7 +2,7 @@
   "schema_id": "forge-game://schemas/template-manifest/1.0.0",
   "schema_version": "1.0.0",
   "template_set_id": "forge-game-project-local",
-  "template_set_version": "1.4.0",
+  "template_set_version": "1.5.0",
   "input_schema_id": "forge-game://schemas/projection-input/1.0.0",
   "supported_variants": ["default"],
   "templates": [
@@ -266,7 +266,7 @@
     },
     {
       "template_id": "project-state",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "source": "project-state.json.tmpl",
       "target": ".forge-game/project-state.json",
       "ownership": "generated",
@@ -275,7 +275,7 @@
       "constants": {},
       "variants": ["default"],
       "validations": ["utf8", "json", "schema:forge-game://schemas/project-state/1.1.0"],
-      "source_hash": "sha256:20155c28e4c197fbdceb69362fa3c41097088795ed9669c2c7181962188cf6c5"
+      "source_hash": "sha256:ceea75deb339761c5bff84512330c689e67d23ea7cbb22624cf345c6ab0fceb9"
     },
     {
       "template_id": "traceability-graph",
@@ -291,5 +291,5 @@
       "source_hash": "sha256:4e508e72459db765ec8f6051330a04e611ebb41e2fb8f76238254ce5869b81bc"
     }
   ],
-  "content_hash": "sha256:1a1ea756513e24c5c874fedf3fb7c9ca36899abbe507f5c7f5376ed03430c87f"
+  "content_hash": "sha256:91ea2eadf2782651957183ac10211ec892eb8d27200f8f0ee02716fc87c2c3de"
 }
