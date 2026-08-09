@@ -2,8 +2,8 @@
   "schema_id": "forge-game://schemas/workflow-definition/1.1.0",
   "schema_version": "1.1.0",
   "workflow_id": "release",
-  "version": "1.1.0",
-  "start_request_schema_id": "forge-game://schemas/start-run-request/1.0.0",
+  "version": "1.2.0",
+  "start_request_schema_id": "forge-game://schemas/start-run-request/1.1.0",
   "entry_phase": "release.eligibility",
   "phases": {
     "release.eligibility": {
@@ -12,7 +12,7 @@
       "purpose": "Check included feature, debt, dependency, license, and platform readiness.",
       "allowed_run_statuses": ["ready", "running"],
       "requires": [],
-      "guards": ["project.bootstrap_ready", "release.scope_valid", "sources.current"],
+      "guards": ["project.bootstrap_ready", "release.scope_valid", "release.required_slices_complete", "sources.current"],
       "capabilities": ["filesystem.read", "git.read"],
       "allowed_actions": [],
       "produces": ["forge-game://schemas/artifact/1.0.0"],

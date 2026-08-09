@@ -84,6 +84,41 @@ class ReconciliationTests(unittest.TestCase):
         self.assertEqual(item["action"], "conflict")
         self.assertEqual(item["reason_code"], "generated_drift")
 
+    def test_projection_never_overwrites_publisher_owned_records(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            project = root / "project"
+            project.mkdir()
+            desired, desired_root = self._desired(root)
+            record = next(
+                item
+                for item in desired["files"]
+                if item["target_path"] == ".forge-game/project-state.json"
+            )
+            baseline = desired_root.joinpath(
+                *PurePosixPath(record["staged_relative_path"]).parts
+            ).read_bytes()
+            target = project.joinpath(*PurePosixPath(record["target_path"]).parts)
+            target.parent.mkdir(parents=True)
+            target.write_bytes(baseline.replace(b'"revision": 1', b'"revision": 7'))
+            projection_path = self._write_projection_manifest(
+                project, record, baseline, ownership="generated"
+            )
+            plan, _ = self.planner.plan(
+                project_root=project,
+                desired_bundle_root=desired_root,
+                plan_store_root=root / "plans",
+                project_id="sample-game",
+                created_at="2026-08-05T10:01:00+03:00",
+                projection_manifest_path=projection_path,
+            )
+        item = next(
+            value for value in plan["items"] if value["target_path"] == record["target_path"]
+        )
+        self.assertEqual(item["action"], "preserve")
+        self.assertEqual(item["reason_code"], "project_record_publisher_owned")
+        self.assertFalse(item["requires_approval"])
+
     def test_managed_json_merges_non_overlapping_changes(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

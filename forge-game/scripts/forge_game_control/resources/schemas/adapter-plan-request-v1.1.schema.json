@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "forge-game://schemas/adapter-plan-request/1.1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_id", "schema_version", "request_id", "adapter_id", "action_id", "project_root", "record_set", "planned_at", "content_hash"],
+  "properties": {
+    "schema_id": {"const": "forge-game://schemas/adapter-plan-request/1.1.0"},
+    "schema_version": {"const": "1.1.0"},
+    "request_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "adapter_id": {"const": "filesystem"},
+    "action_id": {"const": "project.records.publish"},
+    "project_root": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "record_set": {"$ref": "forge-game://schemas/project-record-set/1.0.0"},
+    "planned_at": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/timestamp"},
+    "content_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+  }
+}

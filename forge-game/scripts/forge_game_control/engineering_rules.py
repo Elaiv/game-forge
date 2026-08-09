@@ -21,8 +21,19 @@ APPLICABILITY_SCHEMA_ID = (
     "forge-game://schemas/engineering-rule-applicability/1.0.0"
 )
 COMPLIANCE_SCHEMA_ID = "forge-game://schemas/engineering-compliance/1.0.0"
+SLICE_APPLICABILITY_SCHEMA_ID = (
+    "forge-game://schemas/engineering-rule-applicability/1.1.0"
+)
+SLICE_COMPLIANCE_SCHEMA_ID = "forge-game://schemas/engineering-compliance/1.1.0"
 PHASE_OUTPUT_SCHEMA_ID = "forge-game://schemas/phase-output/1.0.0"
-CURRENT_PROJECT_STATE_SCHEMA_ID = "forge-game://schemas/project-state/1.1.0"
+ARCHITECTURE_MODEL_SCHEMA_ID = "forge-game://schemas/architecture-model/1.0.0"
+MODULE_CATALOG_SCHEMA_ID = "forge-game://schemas/module-catalog/1.0.0"
+SLICE_BACKLOG_SCHEMA_ID = "forge-game://schemas/slice-backlog/1.0.0"
+SLICE_PLAN_SCHEMA_ID = "forge-game://schemas/slice-plan/1.0.0"
+ARCHITECTURE_DELTA_SCHEMA_ID = "forge-game://schemas/architecture-delta/1.0.0"
+SLICE_SMOKE_RESULT_SCHEMA_ID = "forge-game://schemas/slice-smoke-result/1.0.0"
+SLICE_VERDICT_SCHEMA_ID = "forge-game://schemas/slice-verdict/1.0.0"
+CURRENT_PROJECT_STATE_SCHEMA_ID = "forge-game://schemas/project-state/1.2.0"
 CATALOG_PACKAGE = "forge_game_control.resources"
 CATALOG_FILE = "engineering-rule-catalog.json"
 RULES_RELATIVE_PATH = Path("references/engineering-rules.md")
@@ -187,10 +198,21 @@ class EngineeringRuleCatalog:
 
 
 class EngineeringContractValidator:
-    _TYPE_TO_SCHEMA = {
-        "engineering-rule-applicability": APPLICABILITY_SCHEMA_ID,
-        "engineering-compliance": COMPLIANCE_SCHEMA_ID,
-        "phase-output": PHASE_OUTPUT_SCHEMA_ID,
+    _TYPE_TO_SCHEMAS = {
+        "engineering-rule-applicability": frozenset(
+            {APPLICABILITY_SCHEMA_ID, SLICE_APPLICABILITY_SCHEMA_ID}
+        ),
+        "engineering-compliance": frozenset(
+            {COMPLIANCE_SCHEMA_ID, SLICE_COMPLIANCE_SCHEMA_ID}
+        ),
+        "phase-output": frozenset({PHASE_OUTPUT_SCHEMA_ID}),
+        "architecture-model": frozenset({ARCHITECTURE_MODEL_SCHEMA_ID}),
+        "module-catalog": frozenset({MODULE_CATALOG_SCHEMA_ID}),
+        "slice-backlog": frozenset({SLICE_BACKLOG_SCHEMA_ID}),
+        "slice-plan": frozenset({SLICE_PLAN_SCHEMA_ID}),
+        "architecture-delta": frozenset({ARCHITECTURE_DELTA_SCHEMA_ID}),
+        "slice-smoke-result": frozenset({SLICE_SMOKE_RESULT_SCHEMA_ID}),
+        "slice-verdict": frozenset({SLICE_VERDICT_SCHEMA_ID}),
     }
 
     def __init__(
@@ -206,26 +228,45 @@ class EngineeringContractValidator:
         artifact_type = artifact.get("artifact_type")
         data = artifact.get("data")
         data_schema = data.get("schema_id") if isinstance(data, dict) else None
-        expected = self._TYPE_TO_SCHEMA.get(artifact_type)
+        expected = self._TYPE_TO_SCHEMAS.get(artifact_type)
         if expected is None:
-            if data_schema in self._TYPE_TO_SCHEMA.values():
+            known_contracts = {
+                schema_id
+                for schema_ids in self._TYPE_TO_SCHEMAS.values()
+                for schema_id in schema_ids
+            }
+            if data_schema in known_contracts:
                 raise EngineeringRulesError(
-                    "Engineering contract data requires its matching artifact_type"
+                    "Typed artifact data requires its matching artifact_type"
                 )
             return "forge-game://schemas/artifact/1.0.0"
-        if data_schema != expected:
+        if data_schema not in expected:
             raise EngineeringRulesError(
-                f"Artifact type {artifact_type} requires contract {expected}"
+                f"Artifact type {artifact_type} requires one of {sorted(expected)}"
             )
-        return expected
+        return data_schema
 
     def validate_artifact(self, artifact: dict[str, Any]) -> str:
         contract_id = self.contract_id(artifact)
-        if contract_id not in self._TYPE_TO_SCHEMA.values():
+        typed_contracts = {
+            schema_id
+            for schema_ids in self._TYPE_TO_SCHEMAS.values()
+            for schema_id in schema_ids
+        }
+        if contract_id not in typed_contracts:
             return contract_id
         data = artifact["data"]
         self.schemas.validate(data, contract_id)
         if contract_id == PHASE_OUTPUT_SCHEMA_ID:
+            return contract_id
+        if contract_id not in {
+            APPLICABILITY_SCHEMA_ID,
+            SLICE_APPLICABILITY_SCHEMA_ID,
+            COMPLIANCE_SCHEMA_ID,
+            SLICE_COMPLIANCE_SCHEMA_ID,
+        }:
+            self._validate_data_contract_bindings(data, artifact)
+            self._validate_delivery_contract(data, contract_id)
             return contract_id
         self._validate_catalog_binding(data)
         selected = data["applicable_rule_ids"]
@@ -238,7 +279,7 @@ class EngineeringContractValidator:
             (item["artifact_id"], item["revision"], item["content_hash"])
             for item in artifact["input_refs"]
         }
-        if contract_id == APPLICABILITY_SCHEMA_ID:
+        if contract_id in {APPLICABILITY_SCHEMA_ID, SLICE_APPLICABILITY_SCHEMA_ID}:
             plan_refs = {
                 (item["artifact_id"], item["revision"], item["content_hash"])
                 for item in data["plan_refs"]
@@ -260,6 +301,137 @@ class EngineeringContractValidator:
                 )
             self._validate_compliance(data, artifact)
         return contract_id
+
+    @staticmethod
+    def _validate_data_contract_bindings(
+        data: dict[str, Any], artifact: dict[str, Any]
+    ) -> None:
+        input_refs = {
+            (item["artifact_id"], item["revision"], item["content_hash"])
+            for item in artifact["input_refs"]
+        }
+
+        def visit(value: Any) -> None:
+            if isinstance(value, dict):
+                if set(value) == {"artifact_id", "revision", "content_hash"}:
+                    identity = (
+                        value["artifact_id"],
+                        value["revision"],
+                        value["content_hash"],
+                    )
+                    if identity not in input_refs:
+                        raise EngineeringRulesError(
+                            "Typed artifact references an unbound input artifact"
+                        )
+                    return
+                for nested in value.values():
+                    visit(nested)
+            elif isinstance(value, list):
+                for nested in value:
+                    visit(nested)
+
+        visit(data)
+
+    @staticmethod
+    def _validate_delivery_contract(data: dict[str, Any], contract_id: str) -> None:
+        if contract_id == ARCHITECTURE_MODEL_SCHEMA_ID:
+            systems = data["systems"]
+            system_ids = [item["system_id"] for item in systems]
+            if len(system_ids) != len(set(system_ids)):
+                raise EngineeringRulesError("Architecture model contains duplicate systems")
+            module_ids = [
+                module_id for item in systems for module_id in item["module_ids"]
+            ]
+            if len(module_ids) != len(set(module_ids)):
+                raise EngineeringRulesError(
+                    "Architecture model assigns a module to multiple systems"
+                )
+            known = set(module_ids)
+            for rule in data["dependency_rules"]:
+                if (
+                    rule["from_module_id"] not in known
+                    or rule["to_module_id"] not in known
+                    or rule["from_module_id"] == rule["to_module_id"]
+                ):
+                    raise EngineeringRulesError(
+                        "Architecture dependency rule has an invalid module endpoint"
+                    )
+            for flow in data["runtime_flows"]:
+                if not set(flow["module_path"]).issubset(known):
+                    raise EngineeringRulesError(
+                        "Architecture runtime flow references an unknown module"
+                    )
+            return
+        if contract_id == MODULE_CATALOG_SCHEMA_ID:
+            modules = data["modules"]
+            module_ids = [item["module_id"] for item in modules]
+            if len(module_ids) != len(set(module_ids)):
+                raise EngineeringRulesError("Module catalog contains duplicate modules")
+            known = set(module_ids)
+            for module in modules:
+                for dependency in module["dependencies"]:
+                    target = dependency["target_module_id"]
+                    if target not in known or target == module["module_id"]:
+                        raise EngineeringRulesError(
+                            "Module catalog dependency has an invalid target"
+                        )
+            return
+        if contract_id == SLICE_BACKLOG_SCHEMA_ID:
+            feature_ids = [item["feature_id"] for item in data["features"]]
+            slice_ids = [item["slice_id"] for item in data["slices"]]
+            if len(feature_ids) != len(set(feature_ids)) or len(slice_ids) != len(
+                set(slice_ids)
+            ):
+                raise EngineeringRulesError(
+                    "Slice backlog contains duplicate feature or slice IDs"
+                )
+            known_slices = set(slice_ids)
+            slice_features = {
+                item["slice_id"]: item["feature_id"] for item in data["slices"]
+            }
+            for feature in data["features"]:
+                listed = [
+                    *feature["required_slice_ids"],
+                    *feature["optional_slice_ids"],
+                ]
+                if len(listed) != len(set(listed)) or not set(listed).issubset(
+                    known_slices
+                ):
+                    raise EngineeringRulesError(
+                        "Slice backlog feature contains invalid slice membership"
+                    )
+                if any(
+                    slice_features[slice_id] != feature["feature_id"]
+                    for slice_id in listed
+                ):
+                    raise EngineeringRulesError(
+                        "Slice backlog feature/slice ownership is inconsistent"
+                    )
+            for item in data["slices"]:
+                if not set(item["depends_on_slice_ids"]).issubset(known_slices):
+                    raise EngineeringRulesError(
+                        "Slice backlog dependency references an unknown slice"
+                    )
+            return
+        if contract_id == SLICE_PLAN_SCHEMA_ID:
+            touched = [item["module_id"] for item in data["touched_modules"]]
+            if len(touched) != len(set(touched)):
+                raise EngineeringRulesError("Slice plan contains duplicate modules")
+            task_ids = [item["task_id"] for item in data["tasks"]]
+            if len(task_ids) != len(set(task_ids)):
+                raise EngineeringRulesError("Slice plan contains duplicate tasks")
+            known = set(touched)
+            if any(not set(task["module_ids"]).issubset(known) for task in data["tasks"]):
+                raise EngineeringRulesError(
+                    "Slice plan task references a module outside the slice"
+                )
+            if (
+                data["acceptance_scenario"]["scenario_id"]
+                != data["smoke_plan"]["scenario_id"]
+            ):
+                raise EngineeringRulesError(
+                    "Slice plan smoke does not exercise its acceptance scenario"
+                )
 
     def _validate_catalog_binding(self, data: dict[str, Any]) -> None:
         expected = self.catalog.metadata()

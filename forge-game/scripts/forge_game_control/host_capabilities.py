@@ -109,10 +109,14 @@ class LocalHostCapabilityVerifier:
             raise ActionExecutionError(
                 "HostCapabilityReport adapter health does not match the registry"
             )
-        self._verify_project_control_layer(project_root, report, adapter_id)
+        self._verify_project_control_layer(project_root, report, adapter_id, request)
 
     def _verify_project_control_layer(
-        self, project_root: Path, report: dict[str, Any], adapter_id: str
+        self,
+        project_root: Path,
+        report: dict[str, Any],
+        adapter_id: str,
+        request: dict[str, Any],
     ) -> None:
         mandatory = (
             project_root / ".codex" / "hooks" / "forge_game_policy.py",
@@ -170,19 +174,62 @@ class LocalHostCapabilityVerifier:
             state = load_json(state_path)
             if not isinstance(state, dict):
                 raise ActionExecutionError("ProjectState is not a JSON object")
-            self.schemas.validate(state, PROJECT_STATE_SCHEMA)
-            if state["forge_game_version"] != __version__:
-                raise ActionExecutionError(
-                    "Installed forge-game version does not match ProjectState"
-                )
+            migration_target = self._refresh_migration_target(request)
+            state_for_policy = migration_target or state
+            if migration_target is None:
+                self.schemas.validate(state, PROJECT_STATE_SCHEMA)
+                if state["forge_game_version"] != __version__:
+                    raise ActionExecutionError(
+                        "Installed forge-game version does not match ProjectState"
+                    )
+            else:
+                schema_id = state.get("schema_id")
+                if schema_id not in {
+                    "forge-game://schemas/project-state/1.1.0",
+                    PROJECT_STATE_SCHEMA,
+                }:
+                    raise ActionExecutionError(
+                        "Refresh migration base ProjectState schema is unsupported"
+                    )
+                self.schemas.validate(state, schema_id)
+                self.schemas.validate(migration_target, PROJECT_STATE_SCHEMA)
+                if migration_target["forge_game_version"] != __version__:
+                    raise ActionExecutionError(
+                        "Refresh migration target does not match installed forge-game"
+                    )
             try:
                 EngineeringRuleCatalog(self.schemas).verify_project_policy(
-                    project_root, state
+                    project_root, state_for_policy
                 )
             except Exception as exc:
                 raise ActionExecutionError(
                     "Project engineering policy does not match the package"
                 ) from exc
+
+    @staticmethod
+    def _refresh_migration_target(
+        request: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        plan = request.get("adapter_plan")
+        plan_request = request.get("adapter_plan_request")
+        if (
+            not isinstance(plan, dict)
+            or plan.get("action_id") != "project.records.publish"
+            or plan.get("details", {}).get("purpose") != "refresh_migration"
+            or not isinstance(plan_request, dict)
+        ):
+            return None
+        record_set = plan_request.get("record_set")
+        if not isinstance(record_set, dict) or record_set.get("purpose") != "refresh_migration":
+            return None
+        matches = [
+            record.get("document")
+            for record in record_set.get("records", [])
+            if isinstance(record, dict) and record.get("record_type") == "project-state"
+        ]
+        if len(matches) != 1 or not isinstance(matches[0], dict):
+            return None
+        return matches[0]
 
     @staticmethod
     def _hook_covered(entries: list[Any], matcher: str) -> bool:

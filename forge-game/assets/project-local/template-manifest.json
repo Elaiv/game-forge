@@ -2,13 +2,13 @@
   "schema_id": "forge-game://schemas/template-manifest/1.0.0",
   "schema_version": "1.0.0",
   "template_set_id": "forge-game-project-local",
-  "template_set_version": "1.5.0",
+  "template_set_version": "1.8.0",
   "input_schema_id": "forge-game://schemas/projection-input/1.0.0",
   "supported_variants": ["default"],
   "templates": [
     {
       "template_id": "root-agents",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "source": "root-agents.md.tmpl",
       "target": "AGENTS.md",
       "ownership": "user-owned",
@@ -17,11 +17,11 @@
       "constants": {},
       "variants": ["default"],
       "validations": ["utf8", "skill-free-markdown"],
-      "source_hash": "sha256:7ac575ec48ed066aecbc80ffe5d6747b0dca5c9e4058d2c409783f7b180cfa2e"
+      "source_hash": "sha256:b8603aa7595206c327832c6af1fbfd738c223dccf29c9479f3e1b1ffef0c2901"
     },
     {
       "template_id": "nested-agents",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "source": "nested-agents.md.tmpl",
       "target": "{{text:module_path}}/AGENTS.md",
       "ownership": "user-owned",
@@ -30,12 +30,12 @@
       "constants": {},
       "variants": ["default"],
       "validations": ["utf8", "skill-free-markdown"],
-      "source_hash": "sha256:5ce47e0164c03d7a3778dae41ca42e2381154453b96fe8addd5f3e966ff269a4",
+      "source_hash": "sha256:7642ec432d5cfa1c5c6d45a685197eaa4d127422a99ed9046350b7aaf7be1921",
       "repeat": "modules"
     },
     {
       "template_id": "role-skill",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "source": "role-skill.md.tmpl",
       "target": ".agents/skills/{{text:role_slug}}/SKILL.md",
       "ownership": "generated",
@@ -44,7 +44,7 @@
       "constants": {},
       "variants": ["default"],
       "validations": ["utf8", "skill"],
-      "source_hash": "sha256:a9f49b7af871ac9005b914e36c0ee458b4dd9e152c38b73c77d6a2b516aba2c6",
+      "source_hash": "sha256:32b0a5c6ceaba014172380e145369578ea5afbb812baf4c8b351f9f581f49069",
       "repeat": "roles"
     },
     {
@@ -187,7 +187,7 @@
     },
     {
       "template_id": "gitignore",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "source": "gitignore.lines.tmpl",
       "target": ".gitignore",
       "ownership": "managed",
@@ -196,7 +196,7 @@
       "constants": {},
       "variants": ["default"],
       "validations": ["utf8", "git-lines"],
-      "source_hash": "sha256:954971547089351cdbf980936cf15a8455a3b5e06aa87b03d1e8ef00279f1888"
+      "source_hash": "sha256:1d5ad3d21eb43eb0332a228fb51ce947a5beb672bb8952d3dfc7c6d8e14dbeaa"
     },
     {
       "template_id": "gitattributes",
@@ -253,7 +253,7 @@
     },
     {
       "template_id": "forge-game-index",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "source": "docs-index.md.tmpl",
       "target": "docs/forge-game/index.md",
       "ownership": "generated",
@@ -262,11 +262,11 @@
       "constants": {},
       "variants": ["default"],
       "validations": ["utf8", "skill-free-markdown"],
-      "source_hash": "sha256:fc64eb29d737adb1b0697fbb23a69dac4984cdde7ae194de6c4fec1a86fe283e"
+      "source_hash": "sha256:29dcfd7e403f3b6c589e239f8bb9fe70d381b52b27438ad0d36549fab2b664bf"
     },
     {
       "template_id": "project-state",
-      "version": "1.2.0",
+      "version": "1.5.0",
       "source": "project-state.json.tmpl",
       "target": ".forge-game/project-state.json",
       "ownership": "generated",
@@ -274,12 +274,12 @@
       "required_inputs": ["project_id", "forge_game_version", "template_set_version", "unreal_engine_version", "toolchain_fingerprint", "engineering_catalog_id", "engineering_catalog_version", "engineering_catalog_hash", "engineering_rules_document_hash", "generated_at"],
       "constants": {},
       "variants": ["default"],
-      "validations": ["utf8", "json", "schema:forge-game://schemas/project-state/1.1.0"],
-      "source_hash": "sha256:ceea75deb339761c5bff84512330c689e67d23ea7cbb22624cf345c6ab0fceb9"
+      "validations": ["utf8", "json", "schema:forge-game://schemas/project-state/1.2.0"],
+      "source_hash": "sha256:99e9719c09d062163dc07d50b199ca69406390c1d22dd9ee53d98ffe743e2f44"
     },
     {
       "template_id": "traceability-graph",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "source": "traceability.json.tmpl",
       "target": ".forge-game/traceability/graph.json",
       "ownership": "generated",
@@ -287,9 +287,9 @@
       "required_inputs": ["traceability_graph_id"],
       "constants": {},
       "variants": ["default"],
-      "validations": ["utf8", "json", "envelope-content-hash", "schema:forge-game://schemas/traceability-graph/1.0.0"],
-      "source_hash": "sha256:4e508e72459db765ec8f6051330a04e611ebb41e2fb8f76238254ce5869b81bc"
+      "validations": ["utf8", "json", "envelope-content-hash", "schema:forge-game://schemas/traceability-graph/1.1.0"],
+      "source_hash": "sha256:a2347aaf55abec8ca764df43299605d4ccc641644632cd86627c9849c77f4cce"
     }
   ],
-  "content_hash": "sha256:91ea2eadf2782651957183ac10211ec892eb8d27200f8f0ee02716fc87c2c3de"
+  "content_hash": "sha256:c67d87bc7582c58976f38f7ee8051ca05503cce9a578f40ec752726a9baac795"
 }

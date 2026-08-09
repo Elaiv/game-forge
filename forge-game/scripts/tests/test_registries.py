@@ -19,7 +19,7 @@ class RegistryTests(unittest.TestCase):
         self.actions = ActionCatalog(self.schemas, self.workflows)
 
     def test_loads_expected_contract_catalog(self) -> None:
-        self.assertEqual(len(self.schemas.ids()), 60)
+        self.assertEqual(len(self.schemas.ids()), 82)
         self.assertEqual(
             self.workflows.ids(),
             ("bootstrap", "feature", "refresh", "release"),
@@ -30,6 +30,8 @@ class RegistryTests(unittest.TestCase):
             "build.preflight",
             "project.files.apply",
             "project.patch.apply",
+            "project.records.publish",
+            "runtime.cleanup",
             "test.gated.run",
             "unreal.mutate",
             "unreal.query",
@@ -103,21 +105,22 @@ class RegistryTests(unittest.TestCase):
         }
         self.assertEqual(reports["bootstrap"]["status"], "ready")
         self.assertEqual(reports["refresh"]["status"], "ready")
-        self.assertEqual(reports["feature"]["status"], "blocked")
-        self.assertIn(
-            "git.push", reports["feature"]["missing_required_action_ids"]
-        )
-        self.assertEqual(reports["release"]["status"], "blocked")
-        self.assertIn(
-            "project.records.publish",
-            reports["release"]["missing_required_action_ids"],
-        )
+        self.assertEqual(reports["feature"]["status"], "ready")
+        self.assertEqual(reports["feature"]["missing_required_action_ids"], [])
+        self.assertIn("git.push", reports["feature"]["missing_optional_action_ids"])
+        self.assertTrue(reports["feature"]["degraded_phases"])
+        self.assertEqual(reports["release"]["status"], "ready")
+        self.assertEqual(reports["release"]["missing_required_action_ids"], [])
 
     def test_feature_enforces_engineering_rules_before_code_and_after_tests(self) -> None:
         definition = self.workflows.get("feature")
         phases = definition["phases"]
 
-        self.assertEqual(definition["version"], "1.3.0")
+        self.assertEqual(definition["version"], "2.1.0")
+        self.assertEqual(
+            definition["start_request_schema_id"],
+            "forge-game://schemas/start-run-request/1.1.0",
+        )
         self.assertEqual(
             phases["feature.prepare"]["transitions"]["success"],
             "feature.engineering_rules",
@@ -128,11 +131,23 @@ class RegistryTests(unittest.TestCase):
         )
         self.assertEqual(
             phases["feature.engineering_rules"]["produces"],
-            ["forge-game://schemas/engineering-rule-applicability/1.0.0"],
+            ["forge-game://schemas/engineering-rule-applicability/1.1.0"],
         )
         self.assertIn(
             "engineering.applicable_rules_recorded",
             phases["feature.implement"]["guards"],
+        )
+        self.assertEqual(
+            phases["feature.implement"]["transitions"]["implemented"],
+            "feature.slice_smoke",
+        )
+        self.assertEqual(
+            phases["feature.slice_smoke"]["required_actions"],
+            ["test.gated.run"],
+        )
+        self.assertEqual(
+            phases["feature.slice_smoke"]["produces"],
+            ["forge-game://schemas/slice-smoke-result/1.0.0"],
         )
         self.assertEqual(
             phases["feature.test_gate"]["transitions"]["defer"],
@@ -152,12 +167,32 @@ class RegistryTests(unittest.TestCase):
         )
         self.assertEqual(
             phases["feature.engineering_compliance"]["produces"],
-            ["forge-game://schemas/engineering-compliance/1.0.0"],
+            ["forge-game://schemas/engineering-compliance/1.1.0"],
         )
         self.assertIn(
             "engineering.compliance_current",
             phases["feature.verify"]["guards"],
         )
+        self.assertEqual(
+            phases["feature.verify"]["produces"],
+            ["forge-game://schemas/slice-verdict/1.0.0"],
+        )
+        self.assertIn(
+            "project.records.publish",
+            phases["feature.publish_records"]["required_actions"],
+        )
+        self.assertIn("runtime.cleanup", phases["feature.cleanup"]["required_actions"])
+        self.assertIn("git.commit", phases["feature.commit_records"]["required_actions"])
+        self.assertNotIn("git.push", phases["feature.remote_sync"]["required_actions"])
+        self.assertNotIn("git.lfs.unlock", phases["feature.cleanup"]["required_actions"])
+
+    def test_bootstrap_and_refresh_require_atomic_project_record_publication(self) -> None:
+        for workflow_id, phase_id in (
+            ("bootstrap", "bootstrap.apply"),
+            ("refresh", "refresh.apply"),
+        ):
+            phase = self.workflows.get(workflow_id)["phases"][phase_id]
+            self.assertIn("project.records.publish", phase["required_actions"])
 
 
 if __name__ == "__main__":

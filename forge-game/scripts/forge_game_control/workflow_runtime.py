@@ -15,9 +15,15 @@ from .artifact_store import ArtifactStore
 from .content_addressing import content_hash, envelope_content_hash
 from .engineering_rules import (
     APPLICABILITY_SCHEMA_ID,
+    ARCHITECTURE_DELTA_SCHEMA_ID,
     COMPLIANCE_SCHEMA_ID,
     EngineeringContractValidator,
     PHASE_OUTPUT_SCHEMA_ID,
+    SLICE_APPLICABILITY_SCHEMA_ID,
+    SLICE_COMPLIANCE_SCHEMA_ID,
+    SLICE_PLAN_SCHEMA_ID,
+    SLICE_SMOKE_RESULT_SCHEMA_ID,
+    SLICE_VERDICT_SCHEMA_ID,
     bytes_hash,
     repository_snapshot,
 )
@@ -42,17 +48,20 @@ from .template_registry import validate_target_path
 from .workflows import TERMINAL_TARGETS, WorkflowRegistry
 
 
-START_REQUEST_SCHEMA_ID = "forge-game://schemas/start-run-request/1.0.0"
-RUN_START_SCHEMA_ID = "forge-game://schemas/run-start-record/1.0.0"
+START_REQUEST_SCHEMA_ID = "forge-game://schemas/start-run-request/1.1.0"
+RUN_START_SCHEMA_ID = "forge-game://schemas/run-start-record/1.1.0"
+LEGACY_RUN_START_SCHEMA_ID = "forge-game://schemas/run-start-record/1.0.0"
 RUN_STATE_SCHEMA_ID = "forge-game://schemas/run-state/1.0.0"
-INVOCATION_SCHEMA_ID = "forge-game://schemas/phase-invocation/1.3.0"
+INVOCATION_SCHEMA_ID = "forge-game://schemas/phase-invocation/1.4.0"
 LEGACY_INVOCATION_SCHEMA_IDS = {
     "forge-game://schemas/phase-invocation/1.1.0",
     "forge-game://schemas/phase-invocation/1.2.0",
+    "forge-game://schemas/phase-invocation/1.3.0",
 }
 START_BOUND_INVOCATION_SCHEMA_IDS = {
     INVOCATION_SCHEMA_ID,
     "forge-game://schemas/phase-invocation/1.2.0",
+    "forge-game://schemas/phase-invocation/1.3.0",
 }
 RESULT_SCHEMA_ID = "forge-game://schemas/phase-result/1.2.0"
 GATE_REQUEST_SCHEMA_ID = "forge-game://schemas/gate-request/1.0.0"
@@ -120,7 +129,10 @@ class WorkflowRuntime:
         created_at: str,
         run_id: str | None = None,
     ) -> dict[str, Any]:
-        self._schemas.validate(request, START_REQUEST_SCHEMA_ID)
+        if not isinstance(request, dict):
+            raise WorkflowRuntimeError("StartRunRequest must be a JSON object")
+        request_schema_id = request.get("schema_id")
+        self._schemas.validate(request, request_schema_id)
         if request.get("resume_run_id") is not None:
             raise WorkflowRuntimeError(
                 "StartRunRequest with resume_run_id must use workflow-resume"
@@ -131,7 +143,9 @@ class WorkflowRuntime:
                 f"StartRunRequest project_root is not canonical; use {project_root}"
             )
         self._validate_project_state_base(project_state_base)
-        self._validate_bound_project_state(project_root, project_state_base)
+        bound_project_state = self._validate_bound_project_state(
+            project_root, project_state_base
+        )
         self._validate_sets(read_set, write_set)
         selected_run_id = run_id or f"run-{uuid.uuid4().hex}"
         require_safe_id(selected_run_id, "run_id", WorkflowRuntimeError)
@@ -140,9 +154,13 @@ class WorkflowRuntime:
             raise RunConflictError(f"Run already exists: {selected_run_id}")
 
         workflow = self._workflows.get(request["entrypoint"])
+        if workflow["start_request_schema_id"] != request_schema_id:
+            raise WorkflowRuntimeError(
+                "StartRunRequest schema does not match the selected workflow"
+            )
         start_record = {
             "schema_id": RUN_START_SCHEMA_ID,
-            "schema_version": "1.0.0",
+            "schema_version": "1.1.0",
             "run_id": selected_run_id,
             "request": request,
             "project_state_base": project_state_base,
@@ -167,7 +185,7 @@ class WorkflowRuntime:
             "current_phase": workflow["entry_phase"],
             "attempt": 1,
             "project_state_base": project_state_base,
-            "input_refs": [],
+            "input_refs": self._project_state_input_refs(bound_project_state),
             "artifact_refs": [],
             "approval_refs": [],
             "action_refs": [],
@@ -218,9 +236,7 @@ class WorkflowRuntime:
     def resume(self, run_id: str) -> dict[str, Any]:
         run_directory = self._run_directory(run_id)
         state, snapshot = self._states.read(run_directory / "run-state.json")
-        start_record = self._load_record(
-            run_directory / "start.json", RUN_START_SCHEMA_ID, "RunStartRecord"
-        )
+        start_record = self._load_start_record(run_directory / "start.json")
         self._validate_run_integrity(run_id, state, start_record)
         response = self._response(state, snapshot, start_record=start_record)
         if state["status"] == "running":
@@ -261,9 +277,10 @@ class WorkflowRuntime:
                     requirement_failure,
                 )
             missing_actions = sorted(
-                set(phase["allowed_actions"]) - self._executable_action_ids
+                set(phase.get("required_actions", phase["allowed_actions"]))
+                - self._executable_action_ids
             )
-            if phase["allowed_actions"] and missing_actions:
+            if missing_actions:
                 return self._block_without_transition(
                     run_directory,
                     state,
@@ -753,7 +770,7 @@ class WorkflowRuntime:
         role = phase["executor_role"]
         invocation = {
             "schema_id": INVOCATION_SCHEMA_ID,
-            "schema_version": "1.3.0",
+            "schema_version": "1.4.0",
             "invocation_id": f"{state['run_id']}-{state['current_phase'].replace('.', '-')}-a{state['attempt']}",
             "run_id": state["run_id"],
             "workflow_id": workflow["workflow_id"],
@@ -900,6 +917,7 @@ class WorkflowRuntime:
             invocation,
             output_artifacts,
         )
+        self._validate_slice_outputs(result, invocation, output_artifacts)
         self._validate_action_references(result, state, phase)
 
     def _validate_engineering_outputs(
@@ -911,8 +929,17 @@ class WorkflowRuntime:
         outputs: list[tuple[dict[str, Any], dict[str, Any], str]],
     ) -> None:
         expected = set(phase["produces"])
-        typed = [item for item in outputs if item[2] in {APPLICABILITY_SCHEMA_ID, COMPLIANCE_SCHEMA_ID}]
-        if not expected.intersection({APPLICABILITY_SCHEMA_ID, COMPLIANCE_SCHEMA_ID}):
+        applicability_contracts = {
+            APPLICABILITY_SCHEMA_ID,
+            SLICE_APPLICABILITY_SCHEMA_ID,
+        }
+        compliance_contracts = {
+            COMPLIANCE_SCHEMA_ID,
+            SLICE_COMPLIANCE_SCHEMA_ID,
+        }
+        engineering_contracts = applicability_contracts | compliance_contracts
+        typed = [item for item in outputs if item[2] in engineering_contracts]
+        if not expected.intersection(engineering_contracts):
             if typed:
                 raise WorkflowRuntimeError(
                     "Engineering contract was emitted by an undeclared phase"
@@ -928,8 +955,13 @@ class WorkflowRuntime:
         feature_id = start_request["inputs"].get("feature_id")
         if data["feature_id"] != feature_id:
             raise WorkflowRuntimeError("Engineering contract feature_id mismatch")
+        if contract_id in {
+            SLICE_APPLICABILITY_SCHEMA_ID,
+            SLICE_COMPLIANCE_SCHEMA_ID,
+        } and data["slice_id"] != start_request["inputs"].get("slice_id"):
+            raise WorkflowRuntimeError("Engineering contract slice_id mismatch")
         project_root = start_request["project_root"]
-        if contract_id == APPLICABILITY_SCHEMA_ID:
+        if contract_id in applicability_contracts:
             snapshot = repository_snapshot(project_root)
             if data["baseline_revision"] != snapshot["head_revision"]:
                 raise WorkflowRuntimeError(
@@ -963,10 +995,15 @@ class WorkflowRuntime:
         )
         if stored_ref.content_hash != applicability_ref["content_hash"]:
             raise WorkflowRuntimeError("Compliance applicability hash mismatch")
-        if (
-            self._engineering_contracts.validate_artifact(applicability)
-            != APPLICABILITY_SCHEMA_ID
-        ):
+        applicability_contract = self._engineering_contracts.validate_artifact(
+            applicability
+        )
+        expected_applicability = (
+            SLICE_APPLICABILITY_SCHEMA_ID
+            if contract_id == SLICE_COMPLIANCE_SCHEMA_ID
+            else APPLICABILITY_SCHEMA_ID
+        )
+        if applicability_contract != expected_applicability:
             raise WorkflowRuntimeError("Compliance reference is not applicability")
         applicability_data = applicability["data"]
         bindings = {
@@ -974,6 +1011,8 @@ class WorkflowRuntime:
             "baseline_revision": applicability_data["baseline_revision"],
             "applicable_rule_ids": applicability_data["applicable_rule_ids"],
         }
+        if contract_id == SLICE_COMPLIANCE_SCHEMA_ID:
+            bindings["slice_id"] = applicability_data["slice_id"]
         for field, expected_value in bindings.items():
             if data[field] != expected_value:
                 raise WorkflowRuntimeError(
@@ -988,6 +1027,39 @@ class WorkflowRuntime:
             raise WorkflowRuntimeError("Compliance final diff hash is stale")
         if result["outcome"] != data["verdict"]:
             raise WorkflowRuntimeError("Phase outcome does not match compliance verdict")
+
+    @staticmethod
+    def _validate_slice_outputs(
+        result: dict[str, Any],
+        invocation: dict[str, Any],
+        outputs: list[tuple[dict[str, Any], dict[str, Any], str]],
+    ) -> None:
+        feature_id = invocation["start_request"]["inputs"].get("feature_id")
+        slice_id = invocation["start_request"]["inputs"].get("slice_id")
+        slice_contracts = {
+            SLICE_PLAN_SCHEMA_ID,
+            ARCHITECTURE_DELTA_SCHEMA_ID,
+            SLICE_SMOKE_RESULT_SCHEMA_ID,
+            SLICE_VERDICT_SCHEMA_ID,
+        }
+        for artifact, _, contract_id in outputs:
+            if contract_id not in slice_contracts:
+                continue
+            data = artifact["data"]
+            if data["feature_id"] != feature_id or data["slice_id"] != slice_id:
+                raise WorkflowRuntimeError(
+                    "Slice artifact identity does not match StartRunRequest"
+                )
+            if contract_id == SLICE_SMOKE_RESULT_SCHEMA_ID:
+                if result["outcome"] != data["status"]:
+                    raise WorkflowRuntimeError(
+                        "Slice smoke outcome does not match its typed result"
+                    )
+            elif contract_id == SLICE_VERDICT_SCHEMA_ID:
+                if result["outcome"] != data["verdict"]:
+                    raise WorkflowRuntimeError(
+                        "Slice verification outcome does not match its verdict"
+                    )
 
     def _validate_action_references(
         self,
@@ -1142,14 +1214,26 @@ class WorkflowRuntime:
         *,
         require_outputs: bool,
     ) -> None:
-        if ARTIFACT_SCHEMA_ID not in set(phase["produces"]):
-            return
-        typed = [item for item in outputs if item[2] == PHASE_OUTPUT_SCHEMA_ID]
-        if require_outputs and len(typed) != 1:
-            raise WorkflowRuntimeError(
-                "Generic artifact phases must emit exactly one typed phase-output"
+        expected = {
+            PHASE_OUTPUT_SCHEMA_ID if item == ARTIFACT_SCHEMA_ID else item
+            for item in phase["produces"]
+            if item != APPROVAL_SCHEMA_ID
+        }
+        actual = [item[2] for item in outputs]
+        if require_outputs:
+            missing = sorted(expected - set(actual))
+            duplicates = sorted(
+                contract_id
+                for contract_id in set(actual)
+                if actual.count(contract_id) != 1
             )
-        for artifact, _, _ in typed:
+            if missing or duplicates or set(actual) != expected:
+                raise WorkflowRuntimeError(
+                    "Phase must emit exactly one artifact for every declared contract"
+                )
+        for artifact, _, contract_id in outputs:
+            if contract_id != PHASE_OUTPUT_SCHEMA_ID:
+                continue
             if artifact["data"]["phase_id"] != state["current_phase"]:
                 raise WorkflowRuntimeError("phase-output phase_id mismatch")
 
@@ -1186,6 +1270,7 @@ class WorkflowRuntime:
             request_schema_id = execution_request.get("schema_id")
             if request_schema_id not in {
                 "forge-game://schemas/execution-request/1.0.0",
+                "forge-game://schemas/execution-request/1.1.0",
                 "forge-game://schemas/tool-execution-request/1.0.0",
             }:
                 raise WorkflowRuntimeError("Stored ExecutionRequest schema is unsupported")
@@ -1214,9 +1299,7 @@ class WorkflowRuntime:
                 "effect_status": "none",
                 "retryable": True,
             }
-        typed_required = required.intersection(
-            {APPLICABILITY_SCHEMA_ID, COMPLIANCE_SCHEMA_ID}
-        )
+        typed_required = required - {ARTIFACT_SCHEMA_ID, APPROVAL_SCHEMA_ID}
         if typed_required:
             available: set[str] = set()
             if self._artifact_store is not None:
@@ -1234,8 +1317,8 @@ class WorkflowRuntime:
             missing = sorted(typed_required - available)
             if missing:
                 return {
-                    "code": "phase.required_engineering_contract_missing",
-                    "message": "Phase requires engineering contracts: " + ", ".join(missing),
+                    "code": "phase.required_typed_contract_missing",
+                    "message": "Phase requires typed contracts: " + ", ".join(missing),
                     "effect_status": "none",
                     "retryable": True,
                 }
@@ -1410,11 +1493,7 @@ class WorkflowRuntime:
                     f"PhaseInvocation {field} does not match current RunState"
                 )
         if invocation["schema_id"] in START_BOUND_INVOCATION_SCHEMA_IDS:
-            start_record = self._load_record(
-                run_directory / "start.json",
-                RUN_START_SCHEMA_ID,
-                "RunStartRecord",
-            )
+            start_record = self._load_start_record(run_directory / "start.json")
             if (
                 invocation["run_start_hash"] != start_record["content_hash"]
                 or invocation["start_request"] != start_record["request"]
@@ -1471,11 +1550,16 @@ class WorkflowRuntime:
             "allowed_actions": phase["allowed_actions"],
             "expected_output_schema_ids": phase["produces"],
         }
-        if invocation["schema_id"] == "forge-game://schemas/phase-invocation/1.2.0":
-            start_record = self._load_record(
-                self._run_directory(state["run_id"]) / "start.json",
-                RUN_START_SCHEMA_ID,
-                "RunStartRecord",
+        if invocation["schema_id"] == "forge-game://schemas/phase-invocation/1.3.0":
+            expected["required_actions"] = phase.get(
+                "required_actions", phase["allowed_actions"]
+            )
+        if invocation["schema_id"] in {
+            "forge-game://schemas/phase-invocation/1.2.0",
+            "forge-game://schemas/phase-invocation/1.3.0",
+        }:
+            start_record = self._load_start_record(
+                self._run_directory(state["run_id"]) / "start.json"
             )
             expected.update(
                 {
@@ -1484,7 +1568,15 @@ class WorkflowRuntime:
                 }
             )
         for field, value in expected.items():
-            if invocation[field] != value:
+            actual_value = invocation[field]
+            if field == "start_request":
+                actual_value = deepcopy(actual_value)
+                value = deepcopy(value)
+                actual_value.pop("schema_id", None)
+                actual_value.pop("schema_version", None)
+                value.pop("schema_id", None)
+                value.pop("schema_version", None)
+            if actual_value != value:
                 raise RunConflictError(
                     f"Legacy PhaseInvocation {field} does not match the ready checkpoint"
                 )
@@ -1541,6 +1633,21 @@ class WorkflowRuntime:
             raise WorkflowRuntimeError(f"{label} must be a JSON object")
         self._schemas.validate(document, schema_id)
         self._verify_envelope(document, label)
+        return document
+
+    def _load_start_record(self, path: Path) -> dict[str, Any]:
+        if path.is_symlink() or not path.is_file():
+            raise WorkflowRuntimeError(f"Missing immutable RunStartRecord: {path}")
+        document = load_json(path)
+        if not isinstance(document, dict):
+            raise WorkflowRuntimeError("RunStartRecord must be a JSON object")
+        schema_id = document.get("schema_id")
+        if schema_id not in {RUN_START_SCHEMA_ID, LEGACY_RUN_START_SCHEMA_ID}:
+            raise WorkflowRuntimeError(
+                f"Unsupported RunStartRecord schema: {schema_id!r}"
+            )
+        self._schemas.validate(document, schema_id)
+        self._verify_envelope(document, "RunStartRecord")
         return document
 
     def _publish_or_match(
@@ -1683,11 +1790,7 @@ class WorkflowRuntime:
         run_id: str,
         state: dict[str, Any],
     ) -> dict[str, Any]:
-        start_record = self._load_record(
-            run_directory / "start.json",
-            RUN_START_SCHEMA_ID,
-            "RunStartRecord",
-        )
+        start_record = self._load_start_record(run_directory / "start.json")
         self._validate_run_integrity(run_id, state, start_record)
         return start_record
 
@@ -1721,20 +1824,20 @@ class WorkflowRuntime:
         self,
         project_root: str,
         project_state_base: dict[str, Any],
-    ) -> None:
+    ) -> dict[str, Any] | None:
         state_path = Path(project_root) / ".forge-game" / "project-state.json"
         if project_state_base["revision"] == 0:
             if state_path.exists() or state_path.is_symlink():
                 raise WorkflowRuntimeError(
                     "Revision zero project baseline requires ProjectState to be absent"
                 )
-            return
+            return None
         if state_path.is_symlink() or not state_path.is_file():
             raise WorkflowRuntimeError(
                 "Declared ProjectState baseline is unavailable in the project"
             )
         try:
-            _, reference = self._states.read(state_path)
+            state, reference = self._states.read(state_path)
         except ForgeGameError as exc:
             raise WorkflowRuntimeError(
                 "Declared ProjectState baseline cannot be validated"
@@ -1746,6 +1849,32 @@ class WorkflowRuntime:
             raise WorkflowRuntimeError(
                 "Declared ProjectState baseline does not match the current snapshot"
             )
+        return state
+
+    @staticmethod
+    def _project_state_input_refs(
+        state: dict[str, Any] | None,
+    ) -> list[dict[str, Any]]:
+        if state is None:
+            return []
+        references: list[dict[str, Any]] = []
+        source_baseline = state.get("source_baseline")
+        if isinstance(source_baseline, dict):
+            references.append(source_baseline)
+        for field in (
+            "architecture_model_ref",
+            "module_catalog_ref",
+            "slice_backlog_ref",
+        ):
+            value = state.get(field)
+            if isinstance(value, dict):
+                references.append(value)
+        refs = state.get("refs")
+        if isinstance(refs, dict):
+            references.extend(
+                value for value in refs.values() if isinstance(value, dict)
+            )
+        return _unique_refs(references)
 
     @staticmethod
     def _validate_sets(read_set: list[str], write_set: list[str]) -> None:

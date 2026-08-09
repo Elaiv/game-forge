@@ -31,8 +31,8 @@ def seal(document: dict[str, object]) -> dict[str, object]:
 
 def start_request(project_root: Path) -> dict[str, object]:
     return {
-        "schema_id": "forge-game://schemas/start-run-request/1.0.0",
-        "schema_version": "1.0.0",
+        "schema_id": "forge-game://schemas/start-run-request/1.1.0",
+        "schema_version": "1.1.0",
         "entrypoint": "bootstrap",
         "project_root": str(project_root.resolve()),
         "inputs": {
@@ -45,11 +45,11 @@ def start_request(project_root: Path) -> dict[str, object]:
 
 def refresh_start_request(project_root: Path) -> dict[str, object]:
     return {
-        "schema_id": "forge-game://schemas/start-run-request/1.0.0",
-        "schema_version": "1.0.0",
+        "schema_id": "forge-game://schemas/start-run-request/1.1.0",
+        "schema_version": "1.1.0",
         "entrypoint": "refresh",
         "project_root": str(project_root.resolve()),
-        "inputs": {"target_forge_game_version": "0.13.0"},
+        "inputs": {"target_forge_game_version": "0.16.0"},
     }
 
 
@@ -82,7 +82,7 @@ def action_workflow(*, required_actions: list[str]) -> dict[str, object]:
         "schema_version": "1.1.0",
         "workflow_id": "bootstrap",
         "version": "9.0.0",
-        "start_request_schema_id": "forge-game://schemas/start-run-request/1.0.0",
+        "start_request_schema_id": "forge-game://schemas/start-run-request/1.1.0",
         "entry_phase": "bootstrap.action",
         "phases": {
             "bootstrap.action": {
@@ -391,6 +391,37 @@ class WorkflowRuntimeTests(unittest.TestCase):
             )
         self.assertEqual(completed["state"]["status"], "completed")
 
+    def test_missing_optional_executor_does_not_block_phase_preparation(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            runtime, schemas = make_runtime(
+                root,
+                executable_action_ids=set(),
+                workflow_definitions=[action_workflow(required_actions=[])],
+            )
+            started = runtime.start(
+                start_request(root),
+                project_state_base={"revision": 0, "content_hash": None},
+                read_set=[],
+                write_set=[],
+                created_at="2026-08-04T12:00:00Z",
+                run_id="run-missing-optional-executor",
+            )
+            prepared = runtime.prepare(
+                "run-missing-optional-executor",
+                expected_revision=started["snapshot"]["revision"],
+                expected_hash=started["snapshot"]["content_hash"],
+                prepared_at="2026-08-04T12:00:01Z",
+            )
+            reference = publish_phase_artifact(root, schemas, prepared["invocation"])
+            completed = runtime.record_result(
+                "run-missing-optional-executor",
+                phase_result(prepared["invocation"], reference),
+                expected_revision=prepared["snapshot"]["revision"],
+                expected_hash=prepared["snapshot"]["content_hash"],
+            )
+        self.assertEqual(completed["state"]["status"], "completed")
+
     def test_successful_phase_requires_exact_satisfied_guards(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()
@@ -586,7 +617,7 @@ class WorkflowRuntimeTests(unittest.TestCase):
             resumed = runtime.resume("run-basic")
         self.assertEqual(started["state"]["status"], "ready")
         self.assertEqual(prepared["state"]["status"], "running")
-        self.assertEqual(prepared["invocation"]["schema_version"], "1.3.0")
+        self.assertEqual(prepared["invocation"]["schema_version"], "1.4.0")
         self.assertEqual(prepared["invocation"]["required_actions"], [])
         self.assertEqual(
             prepared["invocation"]["start_request"],
@@ -724,6 +755,10 @@ class WorkflowRuntimeTests(unittest.TestCase):
             legacy["schema_id"] = "forge-game://schemas/phase-invocation/1.2.0"
             legacy["schema_version"] = "1.2.0"
             legacy.pop("required_actions")
+            legacy["start_request"]["schema_id"] = (
+                "forge-game://schemas/start-run-request/1.0.0"
+            )
+            legacy["start_request"]["schema_version"] = "1.0.0"
             seal(legacy)
             path.write_text(json.dumps(legacy), encoding="utf-8")
             prepared = runtime.prepare(

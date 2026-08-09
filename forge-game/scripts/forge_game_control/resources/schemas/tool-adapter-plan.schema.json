@@ -24,7 +24,7 @@
     "schema_version": {"const": "1.0.0"},
     "adapter_plan_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
     "request_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
-    "adapter_id": {"enum": ["git", "git_lfs", "build", "test", "unreal_mcp"]},
+    "adapter_id": {"enum": ["git", "git_lfs", "build", "test", "runtime", "unreal_mcp"]},
     "action_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
     "status": {"enum": ["ready", "blocked", "noop"]},
     "subject_hashes": {
@@ -48,6 +48,7 @@
               "git_add",
               "git_commit",
               "git_worktree_add",
+              "git_worktree_remove",
               "git_merge",
               "git_lfs_lock",
               "git_lfs_unlock",

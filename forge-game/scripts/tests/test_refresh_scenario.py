@@ -10,13 +10,14 @@ from unittest.mock import patch
 from forge_game_control.action_catalog import ActionCatalog
 from forge_game_control.adapters import AdapterRegistry
 from forge_game_control.approval_store import ApprovalStore
-from forge_game_control.content_addressing import envelope_content_hash
+from forge_game_control.content_addressing import canonical_json_bytes, envelope_content_hash
 from forge_game_control.execution import ActionExecutor
 from forge_game_control.filesystem_adapter import FilesystemAdapter
 from forge_game_control.merge_drivers import MergeDriverRegistry
 from forge_game_control.projection import ProjectionBuilder
 from forge_game_control.reconciliation import ReconciliationPlanner
 from forge_game_control.schemas import SchemaRegistry
+from forge_game_control.slice_model_migration import SliceModelMigration
 from forge_game_control.state import StateStore
 from forge_game_control.template_registry import TemplateRegistry, bytes_hash
 from forge_game_control.tool_adapters import ToolPlanBuilder
@@ -26,6 +27,7 @@ from forge_game_control.workflows import WorkflowRegistry
 
 from test_policy import action_intent, policy_context
 from test_project_templates import projection_input
+from test_project_records import legacy_state, migration_request
 from test_workflow_runtime import phase_result, publish_phase_artifact
 
 
@@ -75,10 +77,7 @@ class RefreshScenarioTests(unittest.TestCase):
             ).build(projection_input(ci_provider="none"), root / "desired")
             state_path = project / ".forge-game" / "project-state.json"
             state_path.parent.mkdir(parents=True)
-            shutil.copyfile(
-                desired_root / "files" / ".forge-game" / "project-state.json",
-                state_path,
-            )
+            state_path.write_bytes(canonical_json_bytes(legacy_state()))
             run_git(project, "add", ".forge-game/project-state.json")
             run_git(project, "commit", "-m", "Record forge-game baseline")
             _, project_state_ref = StateStore(self.schemas).read(state_path)
@@ -120,11 +119,11 @@ class RefreshScenarioTests(unittest.TestCase):
 
             response = runtime.start(
                 {
-                    "schema_id": "forge-game://schemas/start-run-request/1.0.0",
-                    "schema_version": "1.0.0",
+                    "schema_id": "forge-game://schemas/start-run-request/1.1.0",
+                    "schema_version": "1.1.0",
                     "entrypoint": "refresh",
                     "project_root": str(project),
-                    "inputs": {"target_forge_game_version": "0.13.0"},
+                    "inputs": {"target_forge_game_version": "0.16.0"},
                 },
                 project_state_base={
                     "revision": project_state_ref.revision,
@@ -140,6 +139,11 @@ class RefreshScenarioTests(unittest.TestCase):
                     {
                         ".forge-game/baselines",
                         ".forge-game/manifests",
+                        ".forge-game/architecture/model.json",
+                        ".forge-game/architecture/modules.json",
+                        ".forge-game/backlog/slices.json",
+                        ".forge-game/traceability/graph.json",
+                        ".forge-game/project-state.json",
                         *(item["target_path"] for item in desired["files"]),
                     }
                 ),
@@ -242,10 +246,45 @@ class RefreshScenarioTests(unittest.TestCase):
             action_results.append(apply_result["result"])
             action_approvals.append(apply_approval)
 
+            record_set = SliceModelMigration(self.schemas).build(migration_request())
+            record_request: dict[str, object] = {
+                "schema_id": "forge-game://schemas/adapter-plan-request/1.1.0",
+                "schema_version": "1.1.0",
+                "request_id": "refresh-record-migration-plan",
+                "adapter_id": "filesystem",
+                "action_id": "project.records.publish",
+                "project_root": str(project),
+                "record_set": record_set,
+                "planned_at": "2026-08-05T07:10:42Z",
+                "content_hash": ZERO_HASH,
+            }
+            seal(record_request)
+            record_plan = self.filesystem.plan(record_request)
+            record_execution, record_approval = self._execution_request(
+                root,
+                project,
+                apply_phase,
+                record_request,
+                record_plan,
+                capabilities=["filesystem.write"],
+                guard_ids=["ownership.allowed", "records.promotion_consistent"],
+                approval_id="approval-refresh-records",
+                evaluated_at="2026-08-05T07:10:45Z",
+                requested_at="2026-08-05T07:10:50Z",
+            )
+            with patch(
+                "forge_game_control.execution._now",
+                return_value="2026-08-05T07:10:55Z",
+            ):
+                record_result = self._filesystem_executor().execute(record_execution)
+            self.assertEqual(record_result["result"]["outcome"], "succeeded")
+            action_results.append(record_result["result"])
+            action_approvals.append(record_approval)
+
             changed_paths = sorted(
                 {
                     target["target_path"]
-                    for plan in (patch_plan, adapter_plan)
+                    for plan in (patch_plan, adapter_plan, record_plan)
                     for target in plan["targets"]
                 }
             )
@@ -396,8 +435,8 @@ class RefreshScenarioTests(unittest.TestCase):
 
             self.assertEqual(completed["state"]["status"], "completed")
             self.assertEqual(completed["state"]["next_safe_action"], "none")
-            self.assertEqual(len(completed["state"]["action_refs"]), 4)
-            self.assertEqual(len(completed["state"]["approval_refs"]), 6)
+            self.assertEqual(len(completed["state"]["action_refs"]), 5)
+            self.assertEqual(len(completed["state"]["approval_refs"]), 7)
             self.assertTrue(
                 all((project / item["target_path"]).is_file() for item in desired["files"])
             )
@@ -562,7 +601,12 @@ class RefreshScenarioTests(unittest.TestCase):
                 for target in adapter_plan["targets"]
             ]
             parameters = {"adapter_plan_hash": adapter_plan["content_hash"]}
-            request_schema = "forge-game://schemas/execution-request/1.0.0"
+            request_schema = (
+                "forge-game://schemas/execution-request/1.1.0"
+                if adapter_plan["schema_id"]
+                == "forge-game://schemas/adapter-plan/1.1.0"
+                else "forge-game://schemas/execution-request/1.0.0"
+            )
         else:
             targets = plan_request["targets"]
             parameters = plan_request["parameters"]
@@ -686,7 +730,11 @@ class RefreshScenarioTests(unittest.TestCase):
         seal(verification)
         request: dict[str, object] = {
             "schema_id": request_schema,
-            "schema_version": "1.0.0",
+            "schema_version": (
+                "1.1.0"
+                if request_schema == "forge-game://schemas/execution-request/1.1.0"
+                else "1.0.0"
+            ),
             "request_id": f"execute-{approval_id}",
             "intent": intent,
             "policy_context": context,

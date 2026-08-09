@@ -17,11 +17,15 @@ from .template_registry import bytes_hash
 ACTION_RECONCILIATION_REQUEST_SCHEMA = (
     "forge-game://schemas/action-reconciliation-request/1.0.0"
 )
+RECORD_ACTION_RECONCILIATION_REQUEST_SCHEMA = (
+    "forge-game://schemas/action-reconciliation-request/1.1.0"
+)
 ACTION_RECONCILIATION_RESULT_SCHEMA = (
     "forge-game://schemas/action-reconciliation-result/1.0.0"
 )
 ACTION_RESULT_SCHEMA = "forge-game://schemas/action-result/1.0.0"
 EXECUTION_REQUEST_SCHEMA = "forge-game://schemas/execution-request/1.0.0"
+RECORD_EXECUTION_REQUEST_SCHEMA = "forge-game://schemas/execution-request/1.1.0"
 TRANSACTION_EVENT_SCHEMA = "forge-game://schemas/transaction-event/1.0.0"
 
 
@@ -33,10 +37,22 @@ class FilesystemActionReconciler:
         self.filesystem = FilesystemAdapter(schemas)
 
     def reconcile(self, request: dict[str, Any]) -> dict[str, Any]:
-        self.schemas.validate(request, ACTION_RECONCILIATION_REQUEST_SCHEMA)
+        request_schema = request.get("schema_id")
+        if request_schema not in {
+            ACTION_RECONCILIATION_REQUEST_SCHEMA,
+            RECORD_ACTION_RECONCILIATION_REQUEST_SCHEMA,
+        }:
+            raise ActionExecutionError("Unsupported ActionReconciliationRequest schema")
+        self.schemas.validate(request, request_schema)
         request_hash = self._verify_hash(request, "ActionReconciliationRequest")
         execution_request = request["execution_request"]
-        self.schemas.validate(execution_request, EXECUTION_REQUEST_SCHEMA)
+        execution_schema = execution_request.get("schema_id")
+        if execution_schema not in {
+            EXECUTION_REQUEST_SCHEMA,
+            RECORD_EXECUTION_REQUEST_SCHEMA,
+        }:
+            raise ActionExecutionError("Unsupported stored ExecutionRequest schema")
+        self.schemas.validate(execution_request, execution_schema)
         self._verify_hash(execution_request, "ExecutionRequest")
 
         intent = execution_request["intent"]
@@ -135,7 +151,15 @@ class FilesystemActionReconciler:
                     stored = load_json(stored_path)
                     if not isinstance(stored, dict):
                         raise ActionExecutionError("Stored ExecutionRequest is not an object")
-                    self.schemas.validate(stored, EXECUTION_REQUEST_SCHEMA)
+                    stored_schema = stored.get("schema_id")
+                    if stored_schema not in {
+                        EXECUTION_REQUEST_SCHEMA,
+                        RECORD_EXECUTION_REQUEST_SCHEMA,
+                    }:
+                        raise ActionExecutionError(
+                            "Stored ExecutionRequest schema is unsupported"
+                        )
+                    self.schemas.validate(stored, stored_schema)
                     self._verify_hash(stored, "Stored ExecutionRequest")
                     if stored != execution_request:
                         raise ActionExecutionError(

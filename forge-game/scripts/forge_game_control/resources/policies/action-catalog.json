@@ -1,7 +1,7 @@
 {
   "schema_id": "forge-game://schemas/action-catalog/1.0.0",
   "schema_version": "1.0.0",
-  "catalog_version": "1.0.0",
+  "catalog_version": "1.1.0",
   "actions": {
     "build.configure": {
       "action_id": "build.configure",
@@ -153,7 +153,7 @@
       "side_effect": true,
       "approval_mode": "scoped",
       "capability_any_of": [["filesystem.write"]],
-      "required_guard_fact_ids": ["ownership.allowed"],
+      "required_guard_fact_ids": ["ownership.allowed", "records.promotion_consistent"],
       "allowed_target_kinds": ["path"],
       "allowed_command_ids": []
     },

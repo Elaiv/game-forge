@@ -42,10 +42,14 @@ class AdapterRegistry:
         AdapterDefinition(
             "filesystem",
             ("filesystem.write",),
-            ("project.files.apply", "project.patch.apply"),
+            ("project.files.apply", "project.patch.apply", "project.records.publish"),
             ("describe", "health", "plan", "execute", "reconcile"),
             "healthy",
-            executable_action_ids=("project.files.apply", "project.patch.apply"),
+            executable_action_ids=(
+                "project.files.apply",
+                "project.patch.apply",
+                "project.records.publish",
+            ),
         ),
         AdapterDefinition(
             "build",
@@ -115,11 +119,11 @@ class AdapterRegistry:
         ),
         AdapterDefinition(
             "runtime",
+            ("runtime.cleanup", "git.write"),
             ("runtime.cleanup",),
-            ("runtime.cleanup",),
-            ("describe", "health", "plan", "reconcile"),
-            "unavailable",
-            "runtime_cleanup_not_connected",
+            ("describe", "health", "plan", "execute", "reconcile"),
+            "healthy",
+            executable_action_ids=("runtime.cleanup",),
         ),
         AdapterDefinition(
             "content_source",

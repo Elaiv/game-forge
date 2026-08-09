@@ -54,6 +54,47 @@ def graph_document() -> dict[str, object]:
     return document
 
 
+def slice_graph_document(*, slice_status: str = "implemented") -> dict[str, object]:
+    nodes = {
+        "REQ-1": node("REQ-1", "requirement", "verified", "Move avatar"),
+        "SYS-1": node("SYS-1", "system", "implemented", "Gameplay"),
+        "MOD-1": node("MOD-1", "module", "implemented", "Movement"),
+        "FEAT-1": node("FEAT-1", "feature", "in_progress", "Avatar movement"),
+        "SLICE-1": {
+            **node("SLICE-1", "slice", slice_status, "Walk in arena"),
+            "slice_kind": "playable",
+            "required_for_feature": True,
+        },
+        "SCN-1": node("SCN-1", "scenario", "verified", "Walk ten meters"),
+        "TASK-1": node("TASK-1", "task", "implemented", "Implement walking"),
+        "CODE-1": node("CODE-1", "code", "implemented", "Movement component"),
+        "EVID-1": node("EVID-1", "evidence", "verified", "Smoke passed"),
+    }
+    edges = {
+        "E-01": edge("E-01", "allocated_to", "REQ-1", "MOD-1"),
+        "E-02": edge("E-02", "decomposes", "SYS-1", "MOD-1"),
+        "E-03": edge("E-03", "decomposes", "FEAT-1", "SLICE-1"),
+        "E-04": edge("E-04", "implements", "SLICE-1", "REQ-1"),
+        "E-05": edge("E-05", "implements", "TASK-1", "SLICE-1"),
+        "E-06": edge("E-06", "implements", "CODE-1", "TASK-1"),
+        "E-07": edge("E-07", "touches", "SLICE-1", "MOD-1"),
+        "E-08": edge("E-08", "demonstrated_by", "SLICE-1", "SCN-1"),
+        "E-09": edge("E-09", "exercises", "SCN-1", "MOD-1"),
+        "E-10": edge("E-10", "verified_by", "SCN-1", "EVID-1"),
+    }
+    document: dict[str, object] = {
+        "schema_id": "forge-game://schemas/traceability-graph/1.1.0",
+        "schema_version": "1.1.0",
+        "graph_id": "slice-traceability",
+        "revision": 1,
+        "nodes": nodes,
+        "edges": edges,
+        "content_hash": ZERO_HASH,
+    }
+    reseal(document)
+    return document
+
+
 def node(node_id: str, kind: str, status: str, title: str) -> dict[str, object]:
     return {
         "node_id": node_id,
@@ -125,6 +166,57 @@ class TraceabilityTests(unittest.TestCase):
         )
         self.assertEqual(result["status"], "fail")
         self.assertIn("parallel.shared_owned_target", result["reason_codes"])
+
+    def test_slice_predicates_gate_smoke_module_path_and_feature_completion(self) -> None:
+        eligible_document = slice_graph_document(slice_status="ready")
+        eligible = TraceabilityGraph(self.schemas, eligible_document).evaluate(
+            "slice_eligible", ["SLICE-1"], evaluated_at="2026-08-09T12:00:00Z"
+        )
+        premature = TraceabilityGraph(self.schemas, eligible_document).evaluate(
+            "slice_complete", ["SLICE-1"], evaluated_at="2026-08-09T12:00:01Z"
+        )
+        complete_document = slice_graph_document()
+        graph = TraceabilityGraph(self.schemas, complete_document)
+        complete = graph.evaluate(
+            "slice_complete", ["SLICE-1"], evaluated_at="2026-08-09T12:00:02Z"
+        )
+        architecture = graph.evaluate(
+            "architecture_consistent", [], evaluated_at="2026-08-09T12:00:03Z"
+        )
+        incomplete_feature = graph.evaluate(
+            "feature_complete", ["FEAT-1"], evaluated_at="2026-08-09T12:00:04Z"
+        )
+        verified_document = slice_graph_document(slice_status="verified")
+        verified_document["nodes"]["FEAT-1"]["status"] = "verified"
+        reseal(verified_document)
+        complete_feature = TraceabilityGraph(
+            self.schemas, verified_document
+        ).evaluate(
+            "feature_complete", ["FEAT-1"], evaluated_at="2026-08-09T12:00:05Z"
+        )
+
+        broken_smoke = slice_graph_document()
+        broken_smoke["edges"].pop("E-09")
+        broken_smoke["edges"].pop("E-10")
+        reseal(broken_smoke)
+        broken = TraceabilityGraph(self.schemas, broken_smoke).evaluate(
+            "slice_complete", ["SLICE-1"], evaluated_at="2026-08-09T12:00:06Z"
+        )
+
+        self.assertEqual(eligible["status"], "pass")
+        self.assertEqual(premature["status"], "fail")
+        self.assertIn("slice.status_not_complete", premature["reason_codes"])
+        self.assertEqual(complete["status"], "pass")
+        self.assertEqual(architecture["status"], "pass")
+        self.assertEqual(incomplete_feature["status"], "fail")
+        self.assertIn(
+            "feature.required_slice_not_verified",
+            incomplete_feature["reason_codes"],
+        )
+        self.assertEqual(complete_feature["status"], "pass")
+        self.assertEqual(broken["status"], "fail")
+        self.assertIn("slice.smoke_evidence_missing", broken["reason_codes"])
+        self.assertIn("slice.module_path_not_exercised", broken["reason_codes"])
 
     def test_rejects_dangling_illegal_and_cyclic_edges(self) -> None:
         dangling = graph_document()

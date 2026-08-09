@@ -92,7 +92,7 @@ class ToolExecutionTests(unittest.TestCase):
                 plan_request,
                 plan,
                 workflow_id="bootstrap",
-                workflow_version="1.2.0",
+                workflow_version="1.4.0",
                 phase_id="bootstrap.apply",
                 role="orchestrator",
                 required_capabilities=["git.write"],
@@ -146,7 +146,7 @@ class ToolExecutionTests(unittest.TestCase):
                 plan_request,
                 plan,
                 workflow_id="feature",
-                workflow_version="1.3.0",
+                workflow_version="2.1.0",
                 phase_id="feature.implement",
                 role="implementer",
                 required_capabilities=["git.write"],
@@ -184,7 +184,7 @@ class ToolExecutionTests(unittest.TestCase):
                 plan_request,
                 plan,
                 workflow_id="bootstrap",
-                workflow_version="1.2.0",
+                workflow_version="1.4.0",
                 phase_id="bootstrap.verify",
                 role="verifier",
                 required_capabilities=["build.run"],
@@ -209,7 +209,7 @@ class ToolExecutionTests(unittest.TestCase):
                 next_request,
                 next_plan,
                 workflow_id="bootstrap",
-                workflow_version="1.2.0",
+                workflow_version="1.4.0",
                 phase_id="bootstrap.verify",
                 role="verifier",
                 required_capabilities=["build.run"],
@@ -333,7 +333,7 @@ class ToolExecutionTests(unittest.TestCase):
                 plan_request,
                 plan,
                 workflow_id="feature",
-                workflow_version="1.3.0",
+                workflow_version="2.1.0",
                 phase_id="feature.implement",
                 role="implementer",
                 required_capabilities=["unreal_mcp.write"],
@@ -470,7 +470,7 @@ class ToolExecutionTests(unittest.TestCase):
                 plan_request,
                 plan,
                 workflow_id="feature",
-                workflow_version="1.3.0",
+                workflow_version="2.1.0",
                 phase_id="feature.implement",
                 role="implementer",
                 required_capabilities=["git.write"],
@@ -516,7 +516,7 @@ class ToolExecutionTests(unittest.TestCase):
                 plan_request,
                 plan,
                 workflow_id="bootstrap",
-                workflow_version="1.2.0",
+                workflow_version="1.4.0",
                 phase_id="bootstrap.verify",
                 role="verifier",
                 required_capabilities=["build.run"],
@@ -571,7 +571,7 @@ class ToolExecutionTests(unittest.TestCase):
                 plan_request,
                 plan,
                 workflow_id="feature",
-                workflow_version="1.3.0",
+                workflow_version="2.1.0",
                 phase_id="feature.test_execute",
                 role="test_agent",
                 required_capabilities=["build.test"],
@@ -641,7 +641,7 @@ class ToolExecutionTests(unittest.TestCase):
                 plan_request,
                 plan,
                 workflow_id="feature",
-                workflow_version="1.3.0",
+                workflow_version="2.1.0",
                 phase_id="feature.implement",
                 role="implementer",
                 required_capabilities=["git.write"],
@@ -723,7 +723,7 @@ class ToolExecutionTests(unittest.TestCase):
                 plan_request,
                 plan,
                 workflow_id="bootstrap",
-                workflow_version="1.2.0",
+                workflow_version="1.4.0",
                 phase_id="bootstrap.verify",
                 role="verifier",
                 required_capabilities=["build.run"],
@@ -783,6 +783,77 @@ class ToolExecutionTests(unittest.TestCase):
             )
         self.assertEqual(plan["status"], "ready")
         self.assertNotIn("--force", plan["operations"][0]["arguments"])
+
+    @unittest.skipUnless(GIT, "Git is required for adapter integration")
+    def test_runtime_cleanup_requires_clean_merged_registered_worktree(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self._initialize_repository(root)
+            worktree = root / ".forge-game" / "worktrees" / "slice-001"
+            worktree.parent.mkdir(parents=True)
+            run_git(
+                root,
+                "worktree",
+                "add",
+                "-b",
+                "slice/001",
+                str(worktree),
+                "HEAD",
+            )
+            (worktree / "README.md").write_text("slice\n", encoding="utf-8")
+            run_git(worktree, "add", "README.md")
+            run_git(worktree, "commit", "-m", "Implement slice")
+            targets = [
+                {
+                    "target_id": "feature-worktree",
+                    "kind": "path",
+                    "value": ".forge-game/worktrees/slice-001",
+                    "expected_hash": None,
+                }
+            ]
+
+            _, blocked = self._plan(
+                root,
+                "runtime",
+                "runtime.cleanup",
+                targets,
+                {},
+                request_id="runtime-cleanup-blocked-plan",
+            )
+            self.assertEqual(blocked["status"], "blocked")
+            self.assertIn("runtime.worktree_not_merged", blocked["reason_codes"])
+
+            run_git(root, "merge", "--no-ff", "--no-edit", "slice/001")
+            plan_request, plan = self._plan(
+                root,
+                "runtime",
+                "runtime.cleanup",
+                targets,
+                {},
+                request_id="runtime-cleanup-plan",
+            )
+            self.assertEqual(plan["status"], "ready")
+            self.assertNotIn("--force", plan["operations"][0]["arguments"])
+            request = self._execution_request(
+                root,
+                plan_request,
+                plan,
+                workflow_id="feature",
+                workflow_version="2.1.0",
+                phase_id="feature.cleanup",
+                role="orchestrator",
+                required_capabilities=["git.write"],
+                guard_ids=["runtime.target.allowed"],
+                request_id="runtime-cleanup-execution",
+            )
+            response = self._executor().execute(request)
+
+            self.assertEqual(response["result"]["outcome"], "succeeded")
+            self.assertFalse(worktree.exists())
+            self.assertNotIn(
+                str(worktree.resolve(strict=False)),
+                run_git(root, "worktree", "list", "--porcelain"),
+            )
 
     def _plan(
         self,
@@ -983,7 +1054,9 @@ class ToolExecutionTests(unittest.TestCase):
     def _exclude_control_storage(root: Path) -> None:
         exclude = root / ".git" / "info" / "exclude"
         with exclude.open("a", encoding="utf-8") as stream:
-            stream.write("\n.test-approvals/\n.test-runtime/\n")
+            stream.write(
+                "\n.test-approvals/\n.test-runtime/\n.forge-game/worktrees/\n"
+            )
 
     @staticmethod
     def _write_command(root: Path, *, mutate: bool) -> None:

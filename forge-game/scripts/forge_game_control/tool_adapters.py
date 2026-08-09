@@ -31,6 +31,7 @@ GIT_ACTIONS = {
     "git.merge",
 }
 LFS_ACTIONS = {"git.lfs.lock", "git.lfs.unlock"}
+RUNTIME_ACTIONS = {"runtime.cleanup"}
 SAFE_COMMIT_MESSAGE = re.compile(r"^[^\r\n\x00]{1,200}$")
 
 
@@ -67,6 +68,13 @@ class ToolPlanBuilder:
             operations, before = self._lfs_plan(
                 project_root,
                 action_id,
+                request["targets"],
+                request["parameters"],
+                reasons,
+            )
+        elif adapter_id == "runtime" and action_id in RUNTIME_ACTIONS:
+            operations, before = self._runtime_plan(
+                project_root,
                 request["targets"],
                 request["parameters"],
                 reasons,
@@ -137,7 +145,7 @@ class ToolPlanBuilder:
         return document
 
     def current_fingerprint(self, adapter_id: str, project_root: Path) -> str:
-        if adapter_id in {"git", "git_lfs", "build", "test"}:
+        if adapter_id in {"git", "git_lfs", "build", "test", "runtime"}:
             return self._git_fingerprint(project_root)
         raise AdapterError(f"Unknown tool adapter: {adapter_id}")
 
@@ -310,6 +318,63 @@ class ToolPlanBuilder:
         return [
             self._operation(index, kind, [git, "lfs", verb, path])
             for index, path in enumerate(paths, start=1)
+        ], before
+
+    def _runtime_plan(
+        self,
+        root: Path,
+        targets: list[dict[str, Any]],
+        parameters: dict[str, Any],
+        reasons: list[str],
+    ) -> tuple[list[dict[str, Any]], str]:
+        before = self._git_fingerprint(root)
+        git = shutil.which("git")
+        if parameters:
+            raise AdapterError("runtime.cleanup does not accept parameters")
+        paths = self._path_targets(targets, allow_root=False)
+        if len(paths) != 1 or len(targets) != 1:
+            raise AdapterError("runtime.cleanup requires one exact worktree path")
+        relative = paths[0]
+        if not relative.startswith(".forge-game/worktrees/"):
+            raise AdapterError(
+                "runtime.cleanup target must stay under .forge-game/worktrees"
+            )
+        target = self._safe_project_target(root, relative)
+        if git is None or not self._is_git_repository(root):
+            reasons.append("git.repository_unavailable")
+            return [], before
+        if target.is_symlink() or not target.is_dir():
+            reasons.append("runtime.worktree_unavailable")
+            return [], before
+        _, listing = self._run_small([git, "worktree", "list", "--porcelain"], root)
+        registered = {
+            Path(line.removeprefix("worktree ")).resolve(strict=False)
+            for line in listing.splitlines()
+            if line.startswith("worktree ")
+        }
+        if target.resolve(strict=True) not in registered:
+            reasons.append("runtime.worktree_not_registered")
+        if self._git_status(target, git):
+            reasons.append("runtime.worktree_not_clean")
+        head_code, head = self._run_small(
+            [git, "rev-parse", "--verify", "HEAD"], target, allow_failure=True
+        )
+        if head_code != 0:
+            reasons.append("runtime.worktree_head_unavailable")
+        else:
+            merged_code, _ = self._run_small(
+                [git, "merge-base", "--is-ancestor", head, "HEAD"],
+                root,
+                allow_failure=True,
+            )
+            if merged_code != 0:
+                reasons.append("runtime.worktree_not_merged")
+        return [
+            self._operation(
+                1,
+                "git_worktree_remove",
+                [git, "worktree", "remove", "--", relative],
+            )
         ], before
 
     def _build_plan(

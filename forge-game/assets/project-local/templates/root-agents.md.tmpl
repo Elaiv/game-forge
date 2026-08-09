@@ -3,7 +3,8 @@
 - Treat `{{text:gdd_ref}}`, `{{text:roadmap_ref}}`, `{{text:architecture_ref}}`, and `{{text:nfr_ref}}` as canonical product and architecture sources.
 - Read `{{text:engineering_rules_ref}}` before Unreal code work or review. Verify it against `{{text:engineering_catalog_ref}}`; stop on a missing or mismatched hash.
 - Run project checks through `.forge-game/bin/run-command <check|build|test|package>`; command arguments come from `.forge-game/manifests/commands.json`.
-- Keep one feature ID per implementation run and preserve traceability to requirements, tests, and evidence.
+- Keep exactly one feature ID and one child slice ID per implementation run. Deliver through an end-to-end playable slice or an explicitly justified enabling slice with mandatory smoke evidence.
+- Treat the architecture as full-project coverage with progressive internal detail; review every affected module and update approved architecture records with accepted contract changes.
 - Do not edit files classified as `generated`; propose changes through forge-game refresh/reconciliation.
 - Do not overwrite existing instructions or project files when ownership is unclear.
 - Use the project-local role skills under `.agents/skills/` for specialized analysis, design, planning, implementation, review, test, and verification work.

@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "forge-game://schemas/traceability-predicate-result/1.1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_id",
+    "schema_version",
+    "predicate",
+    "subject_ids",
+    "graph_id",
+    "graph_revision",
+    "graph_hash",
+    "status",
+    "reason_codes",
+    "evidence_ids",
+    "evaluated_at",
+    "content_hash"
+  ],
+  "properties": {
+    "schema_id": {"const": "forge-game://schemas/traceability-predicate-result/1.1.0"},
+    "schema_version": {"const": "1.1.0"},
+    "predicate": {"enum": ["feature_eligible", "feature_coverage", "feature_complete", "slice_eligible", "slice_complete", "architecture_consistent", "release_readiness", "parallel_safe"]},
+    "subject_ids": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+    "graph_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "graph_revision": {"type": "integer", "minimum": 1},
+    "graph_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+    "status": {"enum": ["pass", "fail", "indeterminate"]},
+    "reason_codes": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]+$"}},
+    "evidence_ids": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+    "evaluated_at": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/timestamp"},
+    "content_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+  }
+}

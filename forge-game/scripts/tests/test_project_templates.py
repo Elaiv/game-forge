@@ -49,7 +49,7 @@ class ProjectTemplateTests(unittest.TestCase):
 
     def test_manifest_and_sources_are_hash_verified(self) -> None:
         self.assertEqual(len(self.templates.templates()), 21)
-        self.assertEqual(self.templates.template_set_version, "1.5.0")
+        self.assertEqual(self.templates.template_set_version, "1.8.0")
         with tempfile.TemporaryDirectory() as directory:
             copied = Path(directory, "project-local")
             shutil.copytree(self.templates.asset_root, copied)
@@ -132,6 +132,11 @@ class ProjectTemplateTests(unittest.TestCase):
                 )
             )
             self.schemas.validate(project_state)
+            self.assertEqual(project_state["schema_version"], "1.2.0")
+            self.assertEqual(project_state["workflow_versions"]["bootstrap"], "1.4.0")
+            self.assertEqual(project_state["workflow_versions"]["feature"], "2.1.0")
+            self.assertEqual(project_state["workflow_versions"]["refresh"], "1.4.0")
+            self.assertEqual(project_state["slice_statuses"], {})
             self.assertEqual(
                 project_state["engineering_policy"]["catalog_hash"],
                 "sha256:fe4ba5871f1a7376a1d48a5f4a832163af1b3d46ef8c568ee92ea602fcb8c67d",
@@ -151,6 +156,7 @@ class ProjectTemplateTests(unittest.TestCase):
                 )
             )
             self.schemas.validate(traceability)
+            self.assertEqual(traceability["schema_version"], "1.1.0")
 
     def test_ci_none_omits_provider_projection(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

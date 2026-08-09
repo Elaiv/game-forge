@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "forge-game://schemas/traceability-graph/1.1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_id", "schema_version", "graph_id", "revision", "nodes", "edges", "content_hash"],
+  "properties": {
+    "schema_id": {"const": "forge-game://schemas/traceability-graph/1.1.0"},
+    "schema_version": {"const": "1.1.0"},
+    "graph_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "revision": {"type": "integer", "minimum": 1},
+    "nodes": {
+      "type": "object",
+      "additionalProperties": {"$ref": "#/$defs/node"}
+    },
+    "edges": {
+      "type": "object",
+      "additionalProperties": {"$ref": "#/$defs/edge"}
+    },
+    "content_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+  },
+  "$defs": {
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["node_id", "kind", "status", "title", "refs"],
+      "properties": {
+        "node_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+        "kind": {"enum": ["source_fragment", "requirement", "nfr", "system", "module", "feature", "slice", "scenario", "task", "code", "test", "evidence", "debt", "asset"]},
+        "status": {"enum": ["planned", "ready", "in_progress", "implemented", "verified", "blocked", "deferred", "waived", "superseded", "rejected"]},
+        "title": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+        "slice_kind": {"enum": ["playable", "enabling"]},
+        "required_for_feature": {"type": "boolean"},
+        "refs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "reference"],
+            "properties": {
+              "kind": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+              "reference": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+              "content_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"kind": {"const": "slice"}}},
+          "then": {"required": ["slice_kind", "required_for_feature"]},
+          "else": {"not": {"anyOf": [{"required": ["slice_kind"]}, {"required": ["required_for_feature"]}]}}
+        }
+      ]
+    },
+    "edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["edge_id", "relation", "from", "to"],
+      "properties": {
+        "edge_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+        "relation": {"enum": ["derives_from", "allocated_to", "implements", "decomposes", "depends_on", "touches", "changes_contract", "demonstrated_by", "exercises", "verified_by", "blocked_by", "has_debt", "owns"]},
+        "from": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+        "to": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}
+      }
+    }
+  }
+}

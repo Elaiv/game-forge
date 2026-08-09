@@ -2,8 +2,8 @@
   "schema_id": "forge-game://schemas/workflow-definition/1.1.0",
   "schema_version": "1.1.0",
   "workflow_id": "refresh",
-  "version": "1.2.0",
-  "start_request_schema_id": "forge-game://schemas/start-run-request/1.0.0",
+  "version": "1.4.0",
+  "start_request_schema_id": "forge-game://schemas/start-run-request/1.1.0",
   "entry_phase": "refresh.discovery",
   "phases": {
     "refresh.discovery": {
@@ -23,7 +23,7 @@
     "refresh.impact": {
       "phase_id": "refresh.impact",
       "executor_role": "architect",
-      "purpose": "Classify source, architecture, schema, workflow, and template impact.",
+      "purpose": "Classify source, architecture, slice backlog, schema, workflow, state migration, and template impact.",
       "allowed_run_statuses": ["running"],
       "requires": ["forge-game://schemas/artifact/1.0.0"],
       "guards": ["refresh.discovery_valid"],
@@ -70,8 +70,8 @@
       "requires": ["forge-game://schemas/approval-record/1.0.0"],
       "guards": ["approval.refresh_apply_valid", "host.write_satisfied", "reconciliation.inputs_unchanged"],
       "capabilities": ["filesystem.write", "git.write"],
-      "allowed_actions": ["project.patch.apply", "project.files.apply", "git.commit"],
-      "required_actions": ["project.files.apply", "git.commit"],
+      "allowed_actions": ["project.patch.apply", "project.files.apply", "project.records.publish", "git.commit"],
+      "required_actions": ["project.files.apply", "project.records.publish", "git.commit"],
       "produces": ["forge-game://schemas/artifact/1.0.0"],
       "gate": null,
       "transitions": {"success": "refresh.verify", "failed": "refresh.reconciliation_plan", "unknown_effect": "$blocked"},

@@ -19,7 +19,7 @@
     "schema_id": {"const": "forge-game://schemas/tool-plan-request/1.0.0"},
     "schema_version": {"const": "1.0.0"},
     "request_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
-    "adapter_id": {"enum": ["git", "git_lfs", "build", "test", "unreal_mcp"]},
+    "adapter_id": {"enum": ["git", "git_lfs", "build", "test", "runtime", "unreal_mcp"]},
     "action_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
     "project_root": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
     "targets": {

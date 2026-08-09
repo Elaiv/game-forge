@@ -31,7 +31,7 @@ def action_intent(**overrides: object) -> dict[str, object]:
         "intent_id": "intent-001",
         "run_id": "run-001",
         "workflow_id": "bootstrap",
-        "workflow_version": "1.2.0",
+        "workflow_version": "1.4.0",
         "phase_id": "bootstrap.apply",
         "attempt": 1,
         "role": "orchestrator",
@@ -94,7 +94,7 @@ def policy_context(project_root: Path, **overrides: object) -> dict[str, object]
         "run_context": {
             "run_id": "run-001",
             "workflow_id": "bootstrap",
-            "workflow_version": "1.2.0",
+            "workflow_version": "1.4.0",
             "phase_id": "bootstrap.apply",
             "attempt": 1,
             "role": "orchestrator",
@@ -191,6 +191,33 @@ class PolicyEvaluatorTests(unittest.TestCase):
             decision = self.evaluator.evaluate(action_intent(), context)
         self.assertEqual(decision["outcome"], "deny")
         self.assertIn("project_policy.action_denied", self.reason_codes(decision))
+
+    def test_project_record_publication_requires_consistency_guard(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            intent = action_intent(
+                action_id="project.records.publish",
+                targets=[
+                    {
+                        "target_id": "project-records",
+                        "kind": "path",
+                        "value": ".forge-game/project-state.json",
+                        "expected_hash": ZERO_HASH,
+                    }
+                ],
+            )
+            context = policy_context(root)
+            missing = self.evaluator.evaluate(intent, context)
+            self.assertEqual(missing["outcome"], "blocked")
+            self.assertIn("guard.indeterminate", self.reason_codes(missing))
+
+            context["guard_facts"]["records.promotion_consistent"] = {
+                "status": "satisfied",
+                "evidence_refs": [],
+            }
+            seal(context)
+            allowed = self.evaluator.evaluate(intent, context)
+            self.assertEqual(allowed["outcome"], "allow")
 
     def test_blocks_when_host_capability_is_indeterminate(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

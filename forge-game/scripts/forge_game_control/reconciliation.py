@@ -18,6 +18,12 @@ from .schemas import SchemaRegistry
 from .template_registry import bytes_hash, validate_target_path
 
 
+PROJECT_RECORD_TARGETS = {
+    ".forge-game/project-state.json",
+    ".forge-game/traceability/graph.json",
+}
+
+
 DESIRED_PROJECTION_SCHEMA = "forge-game://schemas/desired-projection/1.0.0"
 OWNERSHIP_MANIFEST_SCHEMA = "forge-game://schemas/ownership-manifest/1.0.0"
 PROJECTION_MANIFEST_SCHEMA = "forge-game://schemas/projection-manifest/1.0.0"
@@ -122,6 +128,24 @@ class ReconciliationPlanner:
                     resolved=None,
                     driver=driver,
                     reason="target_symlink_forbidden",
+                    requires_approval=False,
+                )
+            elif target in PROJECT_RECORD_TARGETS and current_payload is not None:
+                item, resolved = self._item(
+                    target=target,
+                    ownership=ownership_class,
+                    action="preserve",
+                    proposed_action=None,
+                    base_hash=(
+                        None
+                        if projected_record is None
+                        else projected_record["baseline_hash"]
+                    ),
+                    current_hash=current_hash,
+                    desired_hash=desired_hash,
+                    resolved=None,
+                    driver=driver,
+                    reason="project_record_publisher_owned",
                     requires_approval=False,
                 )
             elif ownership_class == "user-owned":

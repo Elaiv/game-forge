@@ -46,6 +46,7 @@ DEFAULT_TIMEOUTS = {
     "git.merge": 600,
     "git.lfs.lock": 300,
     "git.lfs.unlock": 300,
+    "runtime.cleanup": 300,
     "build.preflight": 1800,
     "build.package": 14400,
     "test.gated.run": 14400,

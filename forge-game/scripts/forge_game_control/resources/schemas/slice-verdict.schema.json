@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "forge-game://schemas/slice-verdict/1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_id",
+    "schema_version",
+    "feature_id",
+    "slice_id",
+    "plan_ref",
+    "smoke_ref",
+    "engineering_compliance_ref",
+    "architecture_model_ref",
+    "module_catalog_ref",
+    "traceability_graph_hash",
+    "slice_complete_status",
+    "coverage_decision",
+    "debt_ids",
+    "verdict",
+    "summary"
+  ],
+  "properties": {
+    "schema_id": {"const": "forge-game://schemas/slice-verdict/1.0.0"},
+    "schema_version": {"const": "1.0.0"},
+    "feature_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "slice_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "plan_ref": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/artifactRef"},
+    "smoke_ref": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/artifactRef"},
+    "engineering_compliance_ref": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/artifactRef"},
+    "architecture_model_ref": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/artifactRef"},
+    "module_catalog_ref": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/artifactRef"},
+    "traceability_graph_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+    "slice_complete_status": {"const": "pass"},
+    "coverage_decision": {"enum": ["cover_now", "defer", "waive_skip"]},
+    "debt_ids": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}
+    },
+    "verdict": {"enum": ["slice_verified", "slice_verified_with_debt", "rejected"]},
+    "summary": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"verdict": {"const": "slice_verified"}}},
+      "then": {
+        "properties": {
+          "coverage_decision": {"const": "cover_now"},
+          "debt_ids": {"maxItems": 0}
+        }
+      },
+      "else": {
+        "if": {"properties": {"verdict": {"const": "slice_verified_with_debt"}}},
+        "then": {"properties": {"debt_ids": {"minItems": 1}}}
+      }
+    }
+  ]
+}

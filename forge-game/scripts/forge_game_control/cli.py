@@ -19,6 +19,7 @@ from .errors import (
 from .execution import ActionExecutor
 from .engineering_rules import EngineeringRuleCatalog, repository_snapshot
 from .filesystem_adapter import FilesystemAdapter
+from .forward_test import ForwardTestPreflight
 from .hook_gateway import evaluate_pre_tool
 from .json_io import dumps_pretty, load_json, loads_json
 from .merge_drivers import MergeDriverRegistry
@@ -27,6 +28,7 @@ from .policy import PolicyEvaluator
 from .projection import ProjectionBuilder
 from .reconciliation import ReconciliationPlanner
 from .schemas import SchemaRegistry
+from .slice_model_migration import SliceModelMigration
 from .source_diff import SourceDiffer
 from .source_normalization import SourceBundleStore
 from .state import StateStore
@@ -70,6 +72,10 @@ def _command_doctor(_: dict[str, Any]) -> dict[str, Any]:
 
 def _command_validate_package(_: dict[str, Any]) -> dict[str, Any]:
     return validate_package()
+
+
+def _command_forward_test_preflight(request: dict[str, Any]) -> dict[str, Any]:
+    return {"report": ForwardTestPreflight(SchemaRegistry()).inspect(request)}
 
 
 def _command_engineering_status(request: dict[str, Any]) -> dict[str, Any]:
@@ -231,7 +237,10 @@ def _command_adapter_health(request: dict[str, Any]) -> dict[str, Any]:
 def _command_adapter_plan(request: dict[str, Any]) -> dict[str, Any]:
     plan_request = (
         request
-        if request.get("schema_id") == "forge-game://schemas/adapter-plan-request/1.0.0"
+        if request.get("schema_id") in {
+            "forge-game://schemas/adapter-plan-request/1.0.0",
+            "forge-game://schemas/adapter-plan-request/1.1.0",
+        }
         else _request_document(request, "plan_request", "plan_request_path")
     )
     schemas = SchemaRegistry()
@@ -241,7 +250,10 @@ def _command_adapter_plan(request: dict[str, Any]) -> dict[str, Any]:
 def _command_action_execute(request: dict[str, Any]) -> dict[str, Any]:
     execution_request = (
         request
-        if request.get("schema_id") == "forge-game://schemas/execution-request/1.0.0"
+        if request.get("schema_id") in {
+            "forge-game://schemas/execution-request/1.0.0",
+            "forge-game://schemas/execution-request/1.1.0",
+        }
         else _request_document(request, "execution_request", "execution_request_path")
     )
     schemas = SchemaRegistry()
@@ -258,8 +270,10 @@ def _command_action_execute(request: dict[str, Any]) -> dict[str, Any]:
 def _command_action_reconcile(request: dict[str, Any]) -> dict[str, Any]:
     reconciliation_request = (
         request
-        if request.get("schema_id")
-        == "forge-game://schemas/action-reconciliation-request/1.0.0"
+        if request.get("schema_id") in {
+            "forge-game://schemas/action-reconciliation-request/1.0.0",
+            "forge-game://schemas/action-reconciliation-request/1.1.0",
+        }
         else _request_document(
             request,
             "reconciliation_request",
@@ -477,6 +491,18 @@ def _command_traceability_evaluate(request: dict[str, Any]) -> dict[str, Any]:
     return {"result": result}
 
 
+def _command_slice_model_migrate(request: dict[str, Any]) -> dict[str, Any]:
+    migration_request = (
+        request
+        if request.get("schema_id")
+        == "forge-game://schemas/slice-model-migration-request/1.0.0"
+        else _request_document(request, "migration_request", "migration_request_path")
+    )
+    return {
+        "record_set": SliceModelMigration(SchemaRegistry()).build(migration_request)
+    }
+
+
 def _request_document(
     request: dict[str, Any],
     document_field: str,
@@ -595,6 +621,7 @@ COMMANDS: dict[str, Command] = {
     "artifact-read": _command_artifact_read,
     "doctor": _command_doctor,
     "engineering-status": _command_engineering_status,
+    "forward-test-preflight": _command_forward_test_preflight,
     "validate-package": _command_validate_package,
     "hash-json": _command_hash_json,
     "hook-check": _command_hook_check,
@@ -614,6 +641,7 @@ COMMANDS: dict[str, Command] = {
     "source-diff": _command_source_diff,
     "source-normalize": _command_source_normalize,
     "source-read": _command_source_read,
+    "slice-model-migrate": _command_slice_model_migrate,
     "traceability-evaluate": _command_traceability_evaluate,
     "traceability-validate": _command_traceability_validate,
     "template-list": _command_template_list,

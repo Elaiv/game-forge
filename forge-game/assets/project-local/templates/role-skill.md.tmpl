@@ -5,7 +5,7 @@ description: {{text:role_description}}
 
 # {{text:role_title}}
 
-Work only within the assigned feature or verification scope for this project.
+Work only within the assigned feature-and-slice or verification scope for this project.
 
 ## Inputs
 
@@ -22,6 +22,7 @@ Work only within the assigned feature or verification scope for this project.
 - Read `{{text:engineering_rules_ref}}` and verify its hash against `{{text:engineering_catalog_ref}}` before analysis, design, implementation, review, test, or verification that can affect Unreal code.
 - Use canonical project commands through `.forge-game/bin/run-command`.
 - Preserve module boundaries and existing ownership classifications.
+- Review full affected-module contracts, but implement only the approved vertical slice. Never report a slice complete without its non-waivable end-to-end smoke evidence.
 - Return evidence and unresolved risks; never approve your own output.
 
 ## Success

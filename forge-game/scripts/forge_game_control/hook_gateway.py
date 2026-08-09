@@ -19,6 +19,7 @@ from .unreal_mcp import UnrealMcpGrantStore
 
 
 EXECUTION_REQUEST_SCHEMA = "forge-game://schemas/execution-request/1.0.0"
+RECORD_EXECUTION_REQUEST_SCHEMA = "forge-game://schemas/execution-request/1.1.0"
 TOOL_EXECUTION_REQUEST_SCHEMA = "forge-game://schemas/tool-execution-request/1.0.0"
 NO_REQUEST_COMMANDS = {
     "adapter-list",
@@ -76,11 +77,15 @@ def evaluate_pre_tool(event: dict[str, Any]) -> dict[str, Any]:
             if not isinstance(request, dict):
                 return _decision(False, "ExecutionRequest must be a JSON object")
             schemas = SchemaRegistry()
-            expected_schema = (
-                EXECUTION_REQUEST_SCHEMA
-                if command == "action-execute"
-                else TOOL_EXECUTION_REQUEST_SCHEMA
-            )
+            if command == "action-execute":
+                expected_schema = request.get("schema_id")
+                if expected_schema not in {
+                    EXECUTION_REQUEST_SCHEMA,
+                    RECORD_EXECUTION_REQUEST_SCHEMA,
+                }:
+                    return _decision(False, "ExecutionRequest schema is unsupported")
+            else:
+                expected_schema = TOOL_EXECUTION_REQUEST_SCHEMA
             schemas.validate(request, expected_schema)
             if envelope_content_hash(request) != request.get("content_hash"):
                 return _decision(False, "ExecutionRequest content_hash mismatch")

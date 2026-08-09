@@ -33,6 +33,7 @@ from .workflows import WorkflowRegistry
 
 ACTION_RESULT_SCHEMA = "forge-game://schemas/action-result/1.0.0"
 EXECUTION_REQUEST_SCHEMA = "forge-game://schemas/execution-request/1.0.0"
+RECORD_EXECUTION_REQUEST_SCHEMA = "forge-game://schemas/execution-request/1.1.0"
 TRANSACTION_EVENT_SCHEMA = "forge-game://schemas/transaction-event/1.0.0"
 
 
@@ -58,7 +59,13 @@ class ActionExecutor:
         )
 
     def execute(self, request: dict[str, Any]) -> dict[str, Any]:
-        self.schemas.validate(request, EXECUTION_REQUEST_SCHEMA)
+        request_schema = request.get("schema_id")
+        if request_schema not in {
+            EXECUTION_REQUEST_SCHEMA,
+            RECORD_EXECUTION_REQUEST_SCHEMA,
+        }:
+            raise ActionExecutionError("Unsupported ExecutionRequest schema")
+        self.schemas.validate(request, request_schema)
         request_hash = self._verify_hash(request, "ExecutionRequest")
         intent = request["intent"]
         context = request["policy_context"]
@@ -119,7 +126,9 @@ class ActionExecutor:
                 raise ActionExecutionError(
                     "Adapter plan is stale; target or control state changed"
                 )
-            payloads = self.filesystem.materialize_payloads(supplied_plan)
+            payloads = self.filesystem.materialize_payloads(
+                supplied_plan, request["adapter_plan_request"]
+            )
             try:
                 execution_root.mkdir()
             except FileExistsError as exc:

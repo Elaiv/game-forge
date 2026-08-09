@@ -64,6 +64,7 @@ def _workflow_readiness(
         missing_required: set[str] = set()
         missing_optional: set[str] = set()
         blocked_phases: list[dict[str, Any]] = []
+        degraded_phases: list[dict[str, Any]] = []
         for phase_id, phase in workflow["phases"].items():
             allowed = set(phase["allowed_actions"])
             required = set(
@@ -76,13 +77,15 @@ def _workflow_readiness(
             phase_optional = missing - required
             missing_required.update(phase_required)
             missing_optional.update(phase_optional)
-            blocked_phases.append(
-                {
-                    "phase_id": phase_id,
-                    "missing_required_action_ids": sorted(phase_required),
-                    "missing_optional_action_ids": sorted(phase_optional),
-                }
-            )
+            phase_report = {
+                "phase_id": phase_id,
+                "missing_required_action_ids": sorted(phase_required),
+                "missing_optional_action_ids": sorted(phase_optional),
+            }
+            if phase_required:
+                blocked_phases.append(phase_report)
+            elif phase_optional:
+                degraded_phases.append(phase_report)
         reports.append(
             {
                 "workflow_id": workflow_id,
@@ -91,6 +94,7 @@ def _workflow_readiness(
                 "missing_required_action_ids": sorted(missing_required),
                 "missing_optional_action_ids": sorted(missing_optional),
                 "blocked_phases": blocked_phases,
+                "degraded_phases": degraded_phases,
             }
         )
     return reports

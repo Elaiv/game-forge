@@ -7,6 +7,7 @@ from typing import Any
 from .content_addressing import canonical_json_bytes, content_hash, envelope_content_hash
 from .errors import AdapterError
 from .json_io import load_json
+from .project_records import PROJECT_RECORD_SET_SCHEMA_ID, RECORD_ORDER, ProjectRecordSetValidator
 from .reconciliation import ReconciliationPlanner
 from .schemas import SchemaRegistry
 from .template_registry import bytes_hash, validate_target_path
@@ -14,6 +15,8 @@ from .template_registry import bytes_hash, validate_target_path
 
 ADAPTER_PLAN_REQUEST_SCHEMA = "forge-game://schemas/adapter-plan-request/1.0.0"
 ADAPTER_PLAN_SCHEMA = "forge-game://schemas/adapter-plan/1.0.0"
+RECORD_ADAPTER_PLAN_REQUEST_SCHEMA = "forge-game://schemas/adapter-plan-request/1.1.0"
+RECORD_ADAPTER_PLAN_SCHEMA = "forge-game://schemas/adapter-plan/1.1.0"
 DESIRED_PROJECTION_SCHEMA = "forge-game://schemas/desired-projection/1.0.0"
 OWNERSHIP_MANIFEST_SCHEMA = "forge-game://schemas/ownership-manifest/1.0.0"
 PROJECTION_MANIFEST_SCHEMA = "forge-game://schemas/projection-manifest/1.0.0"
@@ -30,6 +33,8 @@ class FilesystemAdapter:
         self.schemas = schemas
 
     def plan(self, request: dict[str, Any]) -> dict[str, Any]:
+        if request.get("schema_id") == RECORD_ADAPTER_PLAN_REQUEST_SCHEMA:
+            return self._plan_records(request)
         self.schemas.validate(request, ADAPTER_PLAN_REQUEST_SCHEMA)
         request_hash = self._verify_envelope(request, "AdapterPlanRequest")
         root = self._project_root(request["project_root"])
@@ -95,8 +100,13 @@ class FilesystemAdapter:
     def materialize_payloads(
         self,
         adapter_plan: dict[str, Any],
+        adapter_plan_request: dict[str, Any] | None = None,
     ) -> dict[str, bytes]:
         """Rebuild all payloads from immutable inputs after the plan was revalidated."""
+        if adapter_plan.get("schema_id") == RECORD_ADAPTER_PLAN_SCHEMA:
+            return self._materialize_record_payloads(
+                adapter_plan, adapter_plan_request
+            )
         details = adapter_plan["details"]
         root = self._project_root(details["project_root"])
         plan_root, reconciliation = self._load_plan(details["plan_bundle_root"])
@@ -130,6 +140,117 @@ class FilesystemAdapter:
                     raise AdapterError(f"Missing generated control payload: {relative}") from exc
             if bytes_hash(payload) != target["result_hash"]:
                 raise AdapterError(f"Payload hash drifted after planning: {target['target_path']}")
+            payloads[target["target_id"]] = payload
+        return payloads
+
+    def _plan_records(self, request: dict[str, Any]) -> dict[str, Any]:
+        self.schemas.validate(request, RECORD_ADAPTER_PLAN_REQUEST_SCHEMA)
+        request_hash = self._verify_envelope(request, "AdapterPlanRequest")
+        root = self._project_root(request["project_root"])
+        record_set = request["record_set"]
+        records = ProjectRecordSetValidator(self.schemas).validate(
+            record_set, project_root=root
+        )
+        reasons: list[str] = []
+        targets: list[dict[str, Any]] = []
+        for record_type, order in sorted(RECORD_ORDER.items(), key=lambda item: item[1]):
+            record = records[record_type]
+            current_hash, safe = self._current_hash(root, record["target_path"])
+            if not safe:
+                reasons.append("records.target_not_regular_file")
+                continue
+            payload = canonical_json_bytes(record["document"])
+            result_hash = bytes_hash(payload)
+            if result_hash != record["document_hash"]:
+                raise AdapterError(
+                    f"Canonical project record hash mismatch: {record_type}"
+                )
+            if current_hash == result_hash:
+                continue
+            targets.append(
+                self._target(
+                    record["target_path"],
+                    "add" if current_hash is None else "change",
+                    current_hash,
+                    result_hash,
+                    {"kind": "record", "relative_path": record["record_id"]},
+                    0o644,
+                )
+            )
+
+        status = "blocked" if reasons else "ready"
+        if not reasons and not targets:
+            status = "noop"
+        seed: dict[str, Any] = {
+            "schema_id": RECORD_ADAPTER_PLAN_SCHEMA,
+            "schema_version": "1.1.0",
+            "request_hash": request_hash,
+            "adapter_id": self.adapter_id,
+            "action_id": "project.records.publish",
+            "status": status,
+            "subject_hashes": sorted(
+                {
+                    request_hash,
+                    record_set["content_hash"],
+                    *(record["document_hash"] for record in records.values()),
+                }
+            ),
+            "targets": targets,
+            "reason_codes": sorted(set(reasons)),
+            "details": {
+                "project_root": str(root),
+                "record_set_id": record_set["record_set_id"],
+                "record_set_hash": record_set["content_hash"],
+                "purpose": record_set["purpose"],
+            },
+            "planned_at": request["planned_at"],
+        }
+        document: dict[str, Any] = {
+            "adapter_plan_id": content_hash(seed),
+            **seed,
+            "content_hash": "sha256:" + "0" * 64,
+        }
+        document["content_hash"] = envelope_content_hash(document)
+        self.schemas.validate(document, RECORD_ADAPTER_PLAN_SCHEMA)
+        return deepcopy(document)
+
+    def _materialize_record_payloads(
+        self,
+        adapter_plan: dict[str, Any],
+        adapter_plan_request: dict[str, Any] | None,
+    ) -> dict[str, bytes]:
+        if adapter_plan_request is None:
+            raise AdapterError(
+                "Project record materialization requires its sealed AdapterPlanRequest"
+            )
+        self.schemas.validate(adapter_plan, RECORD_ADAPTER_PLAN_SCHEMA)
+        self.schemas.validate(
+            adapter_plan_request, RECORD_ADAPTER_PLAN_REQUEST_SCHEMA
+        )
+        request_hash = self._verify_envelope(
+            adapter_plan_request, "AdapterPlanRequest"
+        )
+        if request_hash != adapter_plan["request_hash"]:
+            raise AdapterError("AdapterPlan request binding mismatch")
+        record_set = adapter_plan_request["record_set"]
+        if record_set["content_hash"] != adapter_plan["details"]["record_set_hash"]:
+            raise AdapterError("AdapterPlan ProjectRecordSet binding mismatch")
+        records = ProjectRecordSetValidator(self.schemas).validate(record_set)
+        by_id = {record["record_id"]: record for record in records.values()}
+        payloads: dict[str, bytes] = {}
+        for target in adapter_plan["targets"]:
+            source = target["payload_source"]
+            try:
+                record = by_id[source["relative_path"]]
+            except KeyError as exc:
+                raise AdapterError("AdapterPlan references an unknown project record") from exc
+            if record["target_path"] != target["target_path"]:
+                raise AdapterError("AdapterPlan project record target binding mismatch")
+            payload = canonical_json_bytes(record["document"])
+            if bytes_hash(payload) != target["result_hash"]:
+                raise AdapterError(
+                    f"Project record payload hash drifted: {target['target_path']}"
+                )
             payloads[target["target_id"]] = payload
         return payloads
 

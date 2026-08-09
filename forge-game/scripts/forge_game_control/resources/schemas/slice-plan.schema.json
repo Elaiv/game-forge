@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "forge-game://schemas/slice-plan/1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_id",
+    "schema_version",
+    "feature_id",
+    "slice_id",
+    "slice_kind",
+    "architecture_model_ref",
+    "module_catalog_ref",
+    "slice_backlog_ref",
+    "outcome",
+    "acceptance_scenario",
+    "touched_modules",
+    "tasks",
+    "runtime_path",
+    "architecture_delta",
+    "rollout",
+    "allowed_placeholders",
+    "smoke_plan"
+  ],
+  "properties": {
+    "schema_id": {"const": "forge-game://schemas/slice-plan/1.0.0"},
+    "schema_version": {"const": "1.0.0"},
+    "feature_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "slice_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "slice_kind": {"enum": ["playable", "enabling"]},
+    "architecture_model_ref": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/artifactRef"},
+    "module_catalog_ref": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/artifactRef"},
+    "slice_backlog_ref": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/artifactRef"},
+    "outcome": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "acceptance_scenario": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scenario_id", "preconditions", "steps", "expected_result"],
+      "properties": {
+        "scenario_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+        "preconditions": {
+          "type": "array",
+          "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}
+        },
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}
+        },
+        "expected_result": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}
+      }
+    },
+    "touched_modules": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["module_id", "contract_impact", "responsibilities_in_slice"],
+        "properties": {
+          "module_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+          "contract_impact": {"enum": ["none", "additive", "breaking"]},
+          "responsibilities_in_slice": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}
+          }
+        }
+      }
+    },
+    "tasks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["task_id", "summary", "module_ids", "acceptance_refs"],
+        "properties": {
+          "task_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+          "summary": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+          "module_ids": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}
+          },
+          "acceptance_refs": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}
+          }
+        }
+      }
+    },
+    "runtime_path": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}
+    },
+    "architecture_delta": {"enum": ["none", "local", "systemic"]},
+    "rollout": {"enum": ["always_on", "feature_flag", "development_only"]},
+    "allowed_placeholders": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["debt_id", "scope", "production_blocking"],
+        "properties": {
+          "debt_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+          "scope": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+          "production_blocking": {"type": "boolean"}
+        }
+      }
+    },
+    "smoke_plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["command_id", "scenario_id", "required_evidence"],
+      "properties": {
+        "command_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+        "scenario_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+        "required_evidence": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}
+        }
+      }
+    }
+  }
+}

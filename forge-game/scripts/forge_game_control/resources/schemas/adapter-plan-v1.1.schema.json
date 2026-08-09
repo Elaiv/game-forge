@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "forge-game://schemas/adapter-plan/1.1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_id", "schema_version", "adapter_plan_id", "request_hash", "adapter_id", "action_id", "status", "subject_hashes", "targets", "reason_codes", "details", "planned_at", "content_hash"],
+  "properties": {
+    "schema_id": {"const": "forge-game://schemas/adapter-plan/1.1.0"},
+    "schema_version": {"const": "1.1.0"},
+    "adapter_plan_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+    "request_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+    "adapter_id": {"const": "filesystem"},
+    "action_id": {"const": "project.records.publish"},
+    "status": {"enum": ["ready", "blocked", "noop"]},
+    "subject_hashes": {"type": "array", "minItems": 2, "uniqueItems": true, "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}},
+    "targets": {"type": "array", "items": {"$ref": "#/$defs/target"}},
+    "reason_codes": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]*$"}},
+    "details": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["project_root", "record_set_id", "record_set_hash", "purpose"],
+      "properties": {
+        "project_root": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+        "record_set_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+        "record_set_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+        "purpose": {"enum": ["bootstrap", "feature_slice", "refresh_migration", "release"]}
+      }
+    },
+    "planned_at": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/timestamp"},
+    "content_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+  },
+  "$defs": {
+    "path": {"type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\)[^\\u0000]+$"},
+    "nullableHash": {"oneOf": [{"type": "null"}, {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}]},
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["target_id", "target_path", "operation", "expected_hash", "result_hash", "payload_source", "mode"],
+      "properties": {
+        "target_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+        "target_path": {"$ref": "#/$defs/path"},
+        "operation": {"enum": ["add", "change"]},
+        "expected_hash": {"$ref": "#/$defs/nullableHash"},
+        "result_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+        "payload_source": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "relative_path"],
+          "properties": {
+            "kind": {"const": "record"},
+            "relative_path": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}
+          }
+        },
+        "mode": {"const": 420}
+      }
+    }
+  }
+}

@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "forge-game://schemas/module-catalog/1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_id", "schema_version", "catalog_id", "revision", "previous_ref", "modules"],
+  "properties": {
+    "schema_id": {"const": "forge-game://schemas/module-catalog/1.0.0"},
+    "schema_version": {"const": "1.0.0"},
+    "catalog_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "revision": {"type": "integer", "minimum": 1},
+    "previous_ref": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "forge-game://schemas/common/1.0.0#/$defs/artifactRef"}
+      ]
+    },
+    "modules": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "module_id",
+          "name",
+          "system_id",
+          "module_type",
+          "maturity",
+          "path",
+          "responsibilities",
+          "public_contracts",
+          "dependencies",
+          "ownership_zones"
+        ],
+        "properties": {
+          "module_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+          "name": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+          "system_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+          "module_type": {"enum": ["runtime", "editor", "adapter", "game_feature"]},
+          "maturity": {"enum": ["planned", "contracted", "materialized", "exercised", "hardened"]},
+          "path": {
+            "oneOf": [
+              {"type": "null"},
+              {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}
+            ]
+          },
+          "responsibilities": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}
+          },
+          "public_contracts": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}
+          },
+          "dependencies": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["target_module_id", "kind"],
+              "properties": {
+                "target_module_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+                "kind": {"enum": ["build", "runtime", "data", "editor"]}
+              }
+            }
+          },
+          "ownership_zones": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "forge-game://schemas/slice-smoke-result/1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_id",
+    "schema_version",
+    "feature_id",
+    "slice_id",
+    "plan_ref",
+    "scenario_id",
+    "command_id",
+    "started_at",
+    "completed_at",
+    "status",
+    "exercised_module_ids",
+    "observed_result",
+    "evidence_refs"
+  ],
+  "properties": {
+    "schema_id": {"const": "forge-game://schemas/slice-smoke-result/1.0.0"},
+    "schema_version": {"const": "1.0.0"},
+    "feature_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "slice_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "plan_ref": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/artifactRef"},
+    "scenario_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "command_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "started_at": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/timestamp"},
+    "completed_at": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/timestamp"},
+    "status": {"enum": ["passed", "failed", "blocked"]},
+    "exercised_module_ids": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}
+    },
+    "observed_result": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "evidence_refs": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}
+    }
+  }
+}

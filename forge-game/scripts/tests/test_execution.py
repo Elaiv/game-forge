@@ -10,19 +10,22 @@ from forge_game_control.action_catalog import ActionCatalog
 from forge_game_control.action_reconciliation import FilesystemActionReconciler
 from forge_game_control.adapters import AdapterRegistry
 from forge_game_control.approval_store import ApprovalStore
-from forge_game_control.content_addressing import envelope_content_hash
+from forge_game_control.content_addressing import canonical_json_bytes, envelope_content_hash
 from forge_game_control.execution import ActionExecutor
 from forge_game_control.errors import ActionExecutionError
 from forge_game_control.filesystem_adapter import FilesystemAdapter
+from forge_game_control.json_io import load_json
 from forge_game_control.merge_drivers import MergeDriverRegistry
 from forge_game_control.projection import ProjectionBuilder
 from forge_game_control.reconciliation import ReconciliationPlanner
 from forge_game_control.schemas import SchemaRegistry
+from forge_game_control.slice_model_migration import SliceModelMigration
 from forge_game_control.template_registry import TemplateRegistry
 from forge_game_control.workflows import WorkflowRegistry
 
 from test_policy import action_intent, policy_context
 from test_project_templates import projection_input
+from test_project_records import legacy_state, migration_request
 
 
 def seal(document: dict[str, object]) -> dict[str, object]:
@@ -154,6 +157,71 @@ class ActionExecutionTests(unittest.TestCase):
             self.assertEqual(result["changed_target_ids"], [])
             for target_path in proposals:
                 self.assertFalse(project.joinpath(*target_path.split("/")).exists())
+
+    def test_project_records_publish_atomically_and_reconcile(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            project = root / "project"
+            project.mkdir()
+            state_path = project / ".forge-game" / "project-state.json"
+            state_path.parent.mkdir()
+            source_state = legacy_state()
+            original_state = canonical_json_bytes(source_state)
+            state_path.write_bytes(original_state)
+            record_set = SliceModelMigration(self.schemas).build(migration_request())
+            plan_request: dict[str, object] = {
+                "schema_id": "forge-game://schemas/adapter-plan-request/1.1.0",
+                "schema_version": "1.1.0",
+                "request_id": "plan-atomic-records",
+                "adapter_id": "filesystem",
+                "action_id": "project.records.publish",
+                "project_root": str(project),
+                "record_set": record_set,
+                "planned_at": "2026-08-05T07:02:00Z",
+                "content_hash": "sha256:" + "0" * 64,
+            }
+            seal(plan_request)
+            adapter_plan = self.filesystem.plan(plan_request)
+
+            failed_request = self._execution_request(
+                project,
+                root / "runtime",
+                plan_request,
+                adapter_plan,
+                "records-failed-001",
+            )
+            failed = self._executor(fail_after_targets=2).execute(failed_request)
+            self.assertEqual(failed["result"]["outcome"], "failed")
+            self.assertEqual(failed["result"]["rollback_status"], "succeeded")
+            self.assertEqual(state_path.read_bytes(), original_state)
+            self.assertFalse((project / ".forge-game" / "architecture").exists())
+            rolled_back = self._reconcile(
+                failed_request, "2026-08-05T07:03:00Z"
+            )
+            self.assertEqual(
+                rolled_back["reconciliation"]["status"], "rolled_back"
+            )
+
+            success_request = self._execution_request(
+                project,
+                root / "runtime",
+                plan_request,
+                adapter_plan,
+                "records-success-001",
+            )
+            succeeded = self._executor().execute(success_request)
+            self.assertEqual(succeeded["result"]["outcome"], "succeeded")
+            self.assertEqual(len(succeeded["result"]["changed_target_ids"]), 5)
+            published_state = load_json(state_path)
+            self.schemas.validate(
+                published_state,
+                "forge-game://schemas/project-state/1.2.0",
+            )
+            self.assertEqual(published_state["revision"], source_state["revision"] + 1)
+            reconciled = self._reconcile(
+                success_request, "2026-08-05T07:03:01Z"
+            )
+            self.assertEqual(reconciled["reconciliation"]["status"], "succeeded")
 
     def test_unconnected_adapters_are_typed_unavailable(self) -> None:
         health = self.adapters.health(
@@ -372,9 +440,16 @@ class ActionExecutionTests(unittest.TestCase):
     def _reconcile(
         self, execution: dict[str, object], reconciled_at: str
     ) -> dict[str, object]:
+        record_request = execution["schema_id"] == (
+            "forge-game://schemas/execution-request/1.1.0"
+        )
         request: dict[str, object] = {
-            "schema_id": "forge-game://schemas/action-reconciliation-request/1.0.0",
-            "schema_version": "1.0.0",
+            "schema_id": (
+                "forge-game://schemas/action-reconciliation-request/1.1.0"
+                if record_request
+                else "forge-game://schemas/action-reconciliation-request/1.0.0"
+            ),
+            "schema_version": "1.1.0" if record_request else "1.0.0",
             "request_id": "reconcile-" + execution["intent"]["idempotency_key"],
             "execution_request": execution,
             "reconciled_at": reconciled_at,
@@ -441,6 +516,11 @@ class ActionExecutionTests(unittest.TestCase):
         context = policy_context(project.resolve(strict=True))
         context["project_policy"]["allowed_path_roots"] = ["."]
         context["approval_verdicts"] = {approval_id: "valid"}
+        if action_id == "project.records.publish":
+            context["guard_facts"]["records.promotion_consistent"] = {
+                "status": "satisfied",
+                "evidence_refs": [],
+            }
         context["evaluated_at"] = "2026-08-05T07:02:15Z"
         trusted_hashes = [
             target["result_hash"]
@@ -518,9 +598,16 @@ class ActionExecutionTests(unittest.TestCase):
             "content_hash": "sha256:" + "0" * 64,
         }
         seal(approval_context)
+        record_request = adapter_plan["schema_id"] == (
+            "forge-game://schemas/adapter-plan/1.1.0"
+        )
         request: dict[str, object] = {
-            "schema_id": "forge-game://schemas/execution-request/1.0.0",
-            "schema_version": "1.0.0",
+            "schema_id": (
+                "forge-game://schemas/execution-request/1.1.0"
+                if record_request
+                else "forge-game://schemas/execution-request/1.0.0"
+            ),
+            "schema_version": "1.1.0" if record_request else "1.0.0",
             "request_id": f"execute-{idempotency_key}",
             "intent": intent,
             "policy_context": context,

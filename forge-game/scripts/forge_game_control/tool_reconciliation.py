@@ -40,6 +40,7 @@ class ToolActionReconciler:
             "git",
             "build",
             "test",
+            "runtime",
             "unreal_mcp",
         }:
             raise ActionExecutionError("Tool reconciliation requires an executable local plan")
