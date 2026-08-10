@@ -65,11 +65,32 @@ The package currently contains 82 schemas, four workflow definitions, and projec
 
 ## Install
 
-Ask Codex to install the skill with `$skill-installer` from:
+The repository root is a container, not a skill directory. The installable skill is
+the nested `forge-game/` directory, so installers must select that path and validate
+`forge-game/SKILL.md`. Do not point an installer at the repository root or require a
+root-level `SKILL.md`.
+
+To install the skill for the current user, ask Codex:
 
 ```text
-https://github.com/Elaiv/game-forge/tree/main/forge-game
+Use $skill-installer to install forge-game from https://github.com/Elaiv/game-forge/tree/main/forge-game
 ```
+
+To install the skill only for a separate project, ask Codex with the absolute project
+path:
+
+```text
+Use $skill-installer to install forge-game from https://github.com/Elaiv/game-forge/tree/main/forge-game into /absolute/path/MyGame/.agents/skills. The selected skill directory is forge-game; validate forge-game/SKILL.md, not SKILL.md at the game-forge repository root.
+```
+
+The equivalent installer arguments are:
+
+```text
+--repo Elaiv/game-forge --path forge-game --dest /absolute/path/MyGame/.agents/skills
+```
+
+After a project-scoped install, start the Codex task from `/absolute/path/MyGame` so
+Codex discovers `.agents/skills/forge-game/SKILL.md`.
 
 For local development, clone the repository and link the skill directory:
 
