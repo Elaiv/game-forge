@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "forge-game://schemas/phase-invocation/1.5.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_id", "schema_version", "invocation_id", "run_id", "workflow_id",
+    "workflow_version", "phase_id", "attempt", "role", "permission_profile",
+    "run_state_revision", "run_state_hash", "run_start_hash", "start_request",
+    "project_state_base", "storage_layout_ref", "input_refs", "guards",
+    "capabilities", "allowed_actions", "required_actions",
+    "expected_output_schema_ids", "created_at", "content_hash"
+  ],
+  "properties": {
+    "schema_id": {"const": "forge-game://schemas/phase-invocation/1.5.0"},
+    "schema_version": {"const": "1.5.0"},
+    "invocation_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "run_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "workflow_id": {"enum": ["bootstrap", "feature", "refresh", "release"]},
+    "workflow_version": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/semver"},
+    "phase_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "attempt": {"type": "integer", "minimum": 1},
+    "role": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "permission_profile": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "run_state_revision": {"type": "integer", "minimum": 1},
+    "run_state_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+    "run_start_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+    "start_request": {
+      "oneOf": [
+        {"$ref": "forge-game://schemas/start-run-request/1.0.0"},
+        {"$ref": "forge-game://schemas/start-run-request/1.1.0"}
+      ]
+    },
+    "project_state_base": {"$ref": "forge-game://schemas/run-start-record/1.2.0#/properties/project_state_base"},
+    "storage_layout_ref": {"$ref": "forge-game://schemas/project-storage-layout/1.0.0#/$defs/layoutRef"},
+    "input_refs": {"type": "array", "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/artifactRef"}},
+    "guards": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "capabilities": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "allowed_actions": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "required_actions": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "expected_output_schema_ids": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "created_at": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/timestamp"},
+    "content_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+  }
+}

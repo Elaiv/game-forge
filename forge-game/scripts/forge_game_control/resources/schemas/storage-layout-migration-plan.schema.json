@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "forge-game://schemas/storage-layout-migration-plan/1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_id", "schema_version", "plan_id", "layout_ref", "action_id", "status", "items", "planned_at", "content_hash"],
+  "properties": {
+    "schema_id": {"const": "forge-game://schemas/storage-layout-migration-plan/1.0.0"},
+    "schema_version": {"const": "1.0.0"},
+    "plan_id": {"type": "string", "pattern": "^storage-migration-[0-9a-f]{24}$"},
+    "layout_ref": {"$ref": "forge-game://schemas/project-storage-layout/1.0.0#/$defs/layoutRef"},
+    "action_id": {"const": "storage.layout.migrate"},
+    "status": {"enum": ["noop", "approval_required"]},
+    "items": {"type": "array", "items": {"$ref": "#/$defs/item"}},
+    "planned_at": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/timestamp"},
+    "content_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+  },
+  "$defs": {
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "source", "target", "cross_repository", "operation", "approval_required", "rollback_strategy", "source_content_hash", "files"],
+      "properties": {
+        "key": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+        "source": {"type": "string", "pattern": "^/"},
+        "target": {"type": "string", "pattern": "^/"},
+        "cross_repository": {"type": "boolean"},
+        "operation": {"const": "copy_verify_leave_source"},
+        "approval_required": {"const": true},
+        "rollback_strategy": {"const": "remove_verified_canonical_copy"},
+        "source_content_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+        "files": {"type": "array", "items": {"$ref": "#/$defs/file"}}
+      }
+    },
+    "file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["relative_path", "content_hash", "mode"],
+      "properties": {
+        "relative_path": {"type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\)[^\\u0000]+$"},
+        "content_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+        "mode": {"enum": [420, 493]}
+      }
+    }
+  }
+}

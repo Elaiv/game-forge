@@ -48,8 +48,8 @@ class ProjectTemplateTests(unittest.TestCase):
         self.templates = TemplateRegistry(self.schemas)
 
     def test_manifest_and_sources_are_hash_verified(self) -> None:
-        self.assertEqual(len(self.templates.templates()), 21)
-        self.assertEqual(self.templates.template_set_version, "1.8.0")
+        self.assertEqual(len(self.templates.templates()), 22)
+        self.assertEqual(self.templates.template_set_version, "1.9.0")
         with tempfile.TemporaryDirectory() as directory:
             copied = Path(directory, "project-local")
             shutil.copytree(self.templates.asset_root, copied)
@@ -65,7 +65,7 @@ class ProjectTemplateTests(unittest.TestCase):
             repeated, same_bundle = builder.build(projection_input(), directory)
             self.assertEqual(document, repeated)
             self.assertEqual(bundle, same_bundle)
-            self.assertEqual(len(document["files"]), 39)
+            self.assertEqual(len(document["files"]), 40)
             targets = {item["target_path"] for item in document["files"]}
             self.assertIn("AGENTS.md", targets)
             self.assertIn("Source/Core/AGENTS.md", targets)
@@ -73,6 +73,7 @@ class ProjectTemplateTests(unittest.TestCase):
             self.assertIn(".forge-game/bin/policy-check", targets)
             self.assertIn(".forge-game/bin/forge-game-control", targets)
             self.assertIn(".forge-game/bin/forge-game-control.py", targets)
+            self.assertIn(".forge-game/manifests/storage-layout.json", targets)
             self.assertIn(".forge-game/policy/engineering-rules.md", targets)
             self.assertIn(
                 ".forge-game/policy/engineering-rule-catalog.json", targets
@@ -135,7 +136,7 @@ class ProjectTemplateTests(unittest.TestCase):
             self.assertEqual(project_state["schema_version"], "1.2.0")
             self.assertEqual(project_state["workflow_versions"]["bootstrap"], "1.4.0")
             self.assertEqual(project_state["workflow_versions"]["feature"], "2.1.0")
-            self.assertEqual(project_state["workflow_versions"]["refresh"], "1.4.0")
+            self.assertEqual(project_state["workflow_versions"]["refresh"], "1.5.0")
             self.assertEqual(project_state["slice_statuses"], {})
             self.assertEqual(
                 project_state["engineering_policy"]["catalog_hash"],

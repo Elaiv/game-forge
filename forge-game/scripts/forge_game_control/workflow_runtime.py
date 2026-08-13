@@ -44,22 +44,27 @@ from .json_io import load_json
 from .run_lock import RunFileLock
 from .schemas import SchemaRegistry
 from .state import SnapshotRef, StateStore
+from .storage_layout import ProjectStorageLayout
 from .template_registry import validate_target_path
 from .workflows import TERMINAL_TARGETS, WorkflowRegistry
 
 
 START_REQUEST_SCHEMA_ID = "forge-game://schemas/start-run-request/1.1.0"
-RUN_START_SCHEMA_ID = "forge-game://schemas/run-start-record/1.1.0"
+RUN_START_SCHEMA_ID = "forge-game://schemas/run-start-record/1.2.0"
+COMPATIBLE_RUN_START_SCHEMA_ID = "forge-game://schemas/run-start-record/1.1.0"
 LEGACY_RUN_START_SCHEMA_ID = "forge-game://schemas/run-start-record/1.0.0"
 RUN_STATE_SCHEMA_ID = "forge-game://schemas/run-state/1.0.0"
-INVOCATION_SCHEMA_ID = "forge-game://schemas/phase-invocation/1.4.0"
+INVOCATION_SCHEMA_ID = "forge-game://schemas/phase-invocation/1.5.0"
+COMPATIBLE_INVOCATION_SCHEMA_ID = "forge-game://schemas/phase-invocation/1.4.0"
 LEGACY_INVOCATION_SCHEMA_IDS = {
     "forge-game://schemas/phase-invocation/1.1.0",
     "forge-game://schemas/phase-invocation/1.2.0",
     "forge-game://schemas/phase-invocation/1.3.0",
+    COMPATIBLE_INVOCATION_SCHEMA_ID,
 }
 START_BOUND_INVOCATION_SCHEMA_IDS = {
     INVOCATION_SCHEMA_ID,
+    COMPATIBLE_INVOCATION_SCHEMA_ID,
     "forge-game://schemas/phase-invocation/1.2.0",
     "forge-game://schemas/phase-invocation/1.3.0",
 }
@@ -98,10 +103,26 @@ class WorkflowRuntime:
         approval_store_root: str | Path | None = None,
         execution_enabled: bool = False,
         executable_action_ids: set[str] | frozenset[str] | None = None,
+        storage_layout: ProjectStorageLayout | None = None,
     ):
         self._schemas = schemas
         self._workflows = workflows
         self._engineering_contracts = EngineeringContractValidator(schemas)
+        self._storage_layout = storage_layout
+        if storage_layout is not None:
+            runtime_root = storage_layout.require_explicit_root(
+                "workflow_store", runtime_root, create=True
+            )
+            if artifact_store_root is None or approval_store_root is None:
+                raise WorkflowRuntimeError(
+                    "Canonical workflow runtime requires artifact and approval stores"
+                )
+            artifact_store_root = storage_layout.require_explicit_root(
+                "artifact_store", artifact_store_root, create=True
+            )
+            approval_store_root = storage_layout.require_explicit_root(
+                "approval_store", approval_store_root, create=True
+            )
         self._runtime_root = ensure_store_root(runtime_root, WorkflowRuntimeError)
         self._artifact_store = (
             ArtifactStore(schemas, artifact_store_root)
@@ -142,6 +163,15 @@ class WorkflowRuntime:
             raise WorkflowRuntimeError(
                 f"StartRunRequest project_root is not canonical; use {project_root}"
             )
+        if (
+            self._storage_layout is not None
+            and project_root != str(self._storage_layout.project_root)
+        ):
+            raise WorkflowRuntimeError(
+                "StartRunRequest project_root does not match the sealed storage layout"
+            )
+        if self._storage_layout is not None:
+            self._storage_layout.require_project_identity(request["entrypoint"])
         self._validate_project_state_base(project_state_base)
         bound_project_state = self._validate_bound_project_state(
             project_root, project_state_base
@@ -158,9 +188,14 @@ class WorkflowRuntime:
             raise WorkflowRuntimeError(
                 "StartRunRequest schema does not match the selected workflow"
             )
+        start_schema_id = (
+            RUN_START_SCHEMA_ID
+            if self._storage_layout is not None
+            else COMPATIBLE_RUN_START_SCHEMA_ID
+        )
         start_record = {
-            "schema_id": RUN_START_SCHEMA_ID,
-            "schema_version": "1.1.0",
+            "schema_id": start_schema_id,
+            "schema_version": "1.2.0" if self._storage_layout is not None else "1.1.0",
             "run_id": selected_run_id,
             "request": request,
             "project_state_base": project_state_base,
@@ -169,8 +204,10 @@ class WorkflowRuntime:
             "created_at": created_at,
             "content_hash": "sha256:" + "0" * 64,
         }
+        if self._storage_layout is not None:
+            start_record["storage_layout_ref"] = self._storage_layout.ref()
         start_record["content_hash"] = envelope_content_hash(start_record)
-        self._schemas.validate(start_record, RUN_START_SCHEMA_ID)
+        self._schemas.validate(start_record, start_schema_id)
         state = {
             "schema_id": RUN_STATE_SCHEMA_ID,
             "schema_version": "1.0.0",
@@ -343,7 +380,7 @@ class WorkflowRuntime:
                 self._publish_or_match(
                     invocation_path,
                     invocation,
-                    INVOCATION_SCHEMA_ID,
+                    invocation["schema_id"],
                     "PhaseInvocation",
                 )
             next_state = self._next_snapshot(
@@ -768,9 +805,15 @@ class WorkflowRuntime:
         created_at: str,
     ) -> dict[str, Any]:
         role = phase["executor_role"]
+        storage_layout_ref = start_record.get("storage_layout_ref")
+        invocation_schema_id = (
+            INVOCATION_SCHEMA_ID
+            if isinstance(storage_layout_ref, dict)
+            else COMPATIBLE_INVOCATION_SCHEMA_ID
+        )
         invocation = {
-            "schema_id": INVOCATION_SCHEMA_ID,
-            "schema_version": "1.4.0",
+            "schema_id": invocation_schema_id,
+            "schema_version": "1.5.0" if storage_layout_ref is not None else "1.4.0",
             "invocation_id": f"{state['run_id']}-{state['current_phase'].replace('.', '-')}-a{state['attempt']}",
             "run_id": state["run_id"],
             "workflow_id": workflow["workflow_id"],
@@ -795,8 +838,10 @@ class WorkflowRuntime:
             "created_at": created_at,
             "content_hash": "sha256:" + "0" * 64,
         }
+        if storage_layout_ref is not None:
+            invocation["storage_layout_ref"] = storage_layout_ref
         invocation["content_hash"] = envelope_content_hash(invocation)
-        self._schemas.validate(invocation, INVOCATION_SCHEMA_ID)
+        self._schemas.validate(invocation, invocation_schema_id)
         return invocation
 
     def _validate_phase_result(
@@ -1240,7 +1285,11 @@ class WorkflowRuntime:
     def _read_action_execution(
         self, result_id: str
     ) -> tuple[dict[str, Any], dict[str, Any]]:
-        executions_root = self._runtime_root / "executions"
+        executions_root = (
+            self._storage_layout.path("execution_journals")
+            if self._storage_layout is not None
+            else self._runtime_root / "executions"
+        )
         if executions_root.is_symlink() or not executions_root.is_dir():
             raise WorkflowRuntimeError(
                 "Action execution store is required to verify action_refs"
@@ -1271,7 +1320,9 @@ class WorkflowRuntime:
             if request_schema_id not in {
                 "forge-game://schemas/execution-request/1.0.0",
                 "forge-game://schemas/execution-request/1.1.0",
+                "forge-game://schemas/execution-request/1.2.0",
                 "forge-game://schemas/tool-execution-request/1.0.0",
+                "forge-game://schemas/tool-execution-request/1.1.0",
             }:
                 raise WorkflowRuntimeError("Stored ExecutionRequest schema is unsupported")
             self._schemas.validate(
@@ -1279,6 +1330,23 @@ class WorkflowRuntime:
                 request_schema_id,
             )
             self._verify_envelope(execution_request, "ExecutionRequest")
+            if self._storage_layout is not None:
+                if request_schema_id not in {
+                    "forge-game://schemas/execution-request/1.2.0",
+                    "forge-game://schemas/tool-execution-request/1.1.0",
+                }:
+                    raise WorkflowRuntimeError(
+                        "Layout-bound run cannot consume legacy execution evidence"
+                    )
+                self._storage_layout.require_ref(
+                    execution_request["storage_layout_ref"]
+                )
+                self._storage_layout.require_explicit_root(
+                    "runtime_root", execution_request["runtime_root"]
+                )
+                self._storage_layout.require_explicit_root(
+                    "approval_store", execution_request["approval_store_root"]
+                )
             matches.append((action_result, execution_request))
         if len(matches) != 1:
             raise WorkflowRuntimeError(
@@ -1510,10 +1578,7 @@ class WorkflowRuntime:
         if not isinstance(invocation, dict):
             raise WorkflowRuntimeError("PhaseInvocation must be a JSON object")
         schema_id = invocation.get("schema_id")
-        if (
-            schema_id != INVOCATION_SCHEMA_ID
-            and schema_id not in LEGACY_INVOCATION_SCHEMA_IDS
-        ):
+        if schema_id != INVOCATION_SCHEMA_ID and schema_id not in LEGACY_INVOCATION_SCHEMA_IDS:
             raise WorkflowRuntimeError(
                 f"Unsupported PhaseInvocation schema: {schema_id!r}"
             )
@@ -1642,7 +1707,11 @@ class WorkflowRuntime:
         if not isinstance(document, dict):
             raise WorkflowRuntimeError("RunStartRecord must be a JSON object")
         schema_id = document.get("schema_id")
-        if schema_id not in {RUN_START_SCHEMA_ID, LEGACY_RUN_START_SCHEMA_ID}:
+        if schema_id not in {
+            RUN_START_SCHEMA_ID,
+            COMPATIBLE_RUN_START_SCHEMA_ID,
+            LEGACY_RUN_START_SCHEMA_ID,
+        }:
             raise WorkflowRuntimeError(
                 f"Unsupported RunStartRecord schema: {schema_id!r}"
             )
@@ -1753,6 +1822,13 @@ class WorkflowRuntime:
             "write_set"
         ] != start_record["write_set"]:
             raise WorkflowRuntimeError("Run read/write sets differ from start record")
+        layout_ref = start_record.get("storage_layout_ref")
+        if layout_ref is not None:
+            if self._storage_layout is None:
+                raise WorkflowRuntimeError(
+                    "Run is bound to a storage layout but runtime has no validated layout"
+                )
+            self._storage_layout.require_ref(layout_ref)
         project_root = self._canonical_project_root(state["workspace"]["project_root"])
         if project_root != state["workspace"]["project_root"]:
             raise WorkflowRuntimeError("Run project_root is no longer canonical")

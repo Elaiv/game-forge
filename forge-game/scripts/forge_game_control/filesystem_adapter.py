@@ -10,6 +10,7 @@ from .json_io import load_json
 from .project_records import PROJECT_RECORD_SET_SCHEMA_ID, RECORD_ORDER, ProjectRecordSetValidator
 from .reconciliation import ReconciliationPlanner
 from .schemas import SchemaRegistry
+from .storage_layout import ProjectStorageLayout
 from .template_registry import bytes_hash, validate_target_path
 
 
@@ -17,6 +18,9 @@ ADAPTER_PLAN_REQUEST_SCHEMA = "forge-game://schemas/adapter-plan-request/1.0.0"
 ADAPTER_PLAN_SCHEMA = "forge-game://schemas/adapter-plan/1.0.0"
 RECORD_ADAPTER_PLAN_REQUEST_SCHEMA = "forge-game://schemas/adapter-plan-request/1.1.0"
 RECORD_ADAPTER_PLAN_SCHEMA = "forge-game://schemas/adapter-plan/1.1.0"
+MIGRATION_ADAPTER_PLAN_REQUEST_SCHEMA = "forge-game://schemas/adapter-plan-request/1.2.0"
+MIGRATION_ADAPTER_PLAN_SCHEMA = "forge-game://schemas/adapter-plan/1.2.0"
+MIGRATION_PLAN_SCHEMA = "forge-game://schemas/storage-layout-migration-plan/1.0.0"
 DESIRED_PROJECTION_SCHEMA = "forge-game://schemas/desired-projection/1.0.0"
 OWNERSHIP_MANIFEST_SCHEMA = "forge-game://schemas/ownership-manifest/1.0.0"
 PROJECTION_MANIFEST_SCHEMA = "forge-game://schemas/projection-manifest/1.0.0"
@@ -35,9 +39,16 @@ class FilesystemAdapter:
     def plan(self, request: dict[str, Any]) -> dict[str, Any]:
         if request.get("schema_id") == RECORD_ADAPTER_PLAN_REQUEST_SCHEMA:
             return self._plan_records(request)
+        if request.get("schema_id") == MIGRATION_ADAPTER_PLAN_REQUEST_SCHEMA:
+            return self._plan_migration(request)
         self.schemas.validate(request, ADAPTER_PLAN_REQUEST_SCHEMA)
         request_hash = self._verify_envelope(request, "AdapterPlanRequest")
         root = self._project_root(request["project_root"])
+        layout = ProjectStorageLayout.resolve(
+            root,
+            schemas=self.schemas,
+            allow_installed_policy_drift=request["action_id"] == "project.files.apply",
+        )
         plan_root, reconciliation = self._load_plan(request["plan_bundle_root"])
         desired_root, desired = self._load_desired(request["desired_bundle_root"])
         if reconciliation["desired_projection_id"] != desired["projection_id"]:
@@ -73,6 +84,7 @@ class FilesystemAdapter:
             "subject_hashes": sorted(
                 {
                     request_hash,
+                    layout.document["content_hash"],
                     reconciliation["plan_id"],
                     desired["projection_id"],
                 }
@@ -105,6 +117,10 @@ class FilesystemAdapter:
         """Rebuild all payloads from immutable inputs after the plan was revalidated."""
         if adapter_plan.get("schema_id") == RECORD_ADAPTER_PLAN_SCHEMA:
             return self._materialize_record_payloads(
+                adapter_plan, adapter_plan_request
+            )
+        if adapter_plan.get("schema_id") == MIGRATION_ADAPTER_PLAN_SCHEMA:
+            return self._materialize_migration_payloads(
                 adapter_plan, adapter_plan_request
             )
         details = adapter_plan["details"]
@@ -143,10 +159,142 @@ class FilesystemAdapter:
             payloads[target["target_id"]] = payload
         return payloads
 
+    def _plan_migration(self, request: dict[str, Any]) -> dict[str, Any]:
+        self.schemas.validate(request, MIGRATION_ADAPTER_PLAN_REQUEST_SCHEMA)
+        request_hash = self._verify_envelope(request, "AdapterPlanRequest")
+        root = self._project_root(request["project_root"])
+        layout = ProjectStorageLayout.resolve(
+            root, schemas=self.schemas, allow_installed_policy_drift=True
+        )
+        migration = request["migration_plan"]
+        self.schemas.validate(migration, MIGRATION_PLAN_SCHEMA)
+        self._verify_envelope(migration, "StorageLayoutMigrationPlan")
+        layout.require_ref(migration["layout_ref"])
+
+        reasons: list[str] = []
+        targets: list[dict[str, Any]] = []
+        source_hashes: set[str] = set()
+        for item in migration["items"]:
+            source_root = self._migration_source(item["source"])
+            expected_target = layout.path(item["key"])
+            if Path(item["target"]) != expected_target:
+                raise AdapterError(
+                    f"Migration target is not canonical for {item['key']}"
+                )
+            if content_hash(item["files"]) != item["source_content_hash"]:
+                raise AdapterError("Migration source inventory hash mismatch")
+            source_hashes.add(item["source_content_hash"])
+            for record in item["files"]:
+                payload = self._read_migration_file(
+                    source_root, record["relative_path"]
+                )
+                if bytes_hash(payload) != record["content_hash"]:
+                    raise AdapterError(
+                        "Migration source changed after the plan was sealed"
+                    )
+                target = expected_target.joinpath(
+                    *PurePosixPath(record["relative_path"]).parts
+                )
+                try:
+                    target_path = target.relative_to(root).as_posix()
+                except ValueError as exc:
+                    raise AdapterError("Migration target escapes project root") from exc
+                current_hash, safe = self._current_hash(root, target_path)
+                if not safe:
+                    reasons.append("storage.migration_target_not_regular_file")
+                    continue
+                if current_hash == record["content_hash"]:
+                    continue
+                if current_hash is not None:
+                    reasons.append("storage.migration_target_collision")
+                    continue
+                targets.append(
+                    self._target(
+                        target_path,
+                        "add",
+                        None,
+                        record["content_hash"],
+                        {
+                            "kind": "migration",
+                            "item_key": item["key"],
+                            "relative_path": record["relative_path"],
+                        },
+                        record["mode"],
+                    )
+                )
+
+        status = "blocked" if reasons else "ready"
+        if not reasons and not targets:
+            status = "noop"
+        seed: dict[str, Any] = {
+            "schema_id": MIGRATION_ADAPTER_PLAN_SCHEMA,
+            "schema_version": "1.2.0",
+            "request_hash": request_hash,
+            "adapter_id": self.adapter_id,
+            "action_id": "storage.layout.migrate",
+            "status": status,
+            "subject_hashes": sorted(
+                {
+                    request_hash,
+                    layout.document["content_hash"],
+                    migration["content_hash"],
+                    *source_hashes,
+                }
+            ),
+            "targets": sorted(targets, key=self._target_order),
+            "reason_codes": sorted(set(reasons)),
+            "details": {
+                "project_root": str(root),
+                "migration_plan_id": migration["plan_id"],
+                "migration_plan_hash": migration["content_hash"],
+            },
+            "planned_at": request["planned_at"],
+        }
+        document: dict[str, Any] = {
+            "adapter_plan_id": content_hash(seed),
+            **seed,
+            "content_hash": "sha256:" + "0" * 64,
+        }
+        document["content_hash"] = envelope_content_hash(document)
+        self.schemas.validate(document, MIGRATION_ADAPTER_PLAN_SCHEMA)
+        return deepcopy(document)
+
+    def _materialize_migration_payloads(
+        self,
+        adapter_plan: dict[str, Any],
+        adapter_plan_request: dict[str, Any] | None,
+    ) -> dict[str, bytes]:
+        if adapter_plan_request is None:
+            raise AdapterError(
+                "Storage migration materialization requires its sealed AdapterPlanRequest"
+            )
+        rebuilt = self._plan_migration(adapter_plan_request)
+        if rebuilt != adapter_plan:
+            raise AdapterError("Storage migration plan drifted before materialization")
+        items = {
+            item["key"]: item
+            for item in adapter_plan_request["migration_plan"]["items"]
+        }
+        payloads: dict[str, bytes] = {}
+        for target in adapter_plan["targets"]:
+            source = target["payload_source"]
+            try:
+                item = items[source["item_key"]]
+            except KeyError as exc:
+                raise AdapterError("Migration payload references an unknown item") from exc
+            payload = self._read_migration_file(
+                self._migration_source(item["source"]), source["relative_path"]
+            )
+            if bytes_hash(payload) != target["result_hash"]:
+                raise AdapterError("Migration payload hash drifted")
+            payloads[target["target_id"]] = payload
+        return payloads
+
     def _plan_records(self, request: dict[str, Any]) -> dict[str, Any]:
         self.schemas.validate(request, RECORD_ADAPTER_PLAN_REQUEST_SCHEMA)
         request_hash = self._verify_envelope(request, "AdapterPlanRequest")
         root = self._project_root(request["project_root"])
+        layout = ProjectStorageLayout.resolve(root, schemas=self.schemas)
         record_set = request["record_set"]
         records = ProjectRecordSetValidator(self.schemas).validate(
             record_set, project_root=root
@@ -191,6 +339,7 @@ class FilesystemAdapter:
             "subject_hashes": sorted(
                 {
                     request_hash,
+                    layout.document["content_hash"],
                     record_set["content_hash"],
                     *(record["document_hash"] for record in records.values()),
                 }
@@ -575,7 +724,37 @@ class FilesystemAdapter:
         root = Path(value)
         if not root.is_absolute() or root.is_symlink() or not root.is_dir():
             raise AdapterError(f"{label} bundle must be a real absolute directory")
-        return root.resolve(strict=True)
+        resolved = root.resolve(strict=True)
+        if resolved != root:
+            raise AdapterError(f"{label} bundle must be canonical and symlink-free")
+        return resolved
+
+    @staticmethod
+    def _migration_source(value: str) -> Path:
+        root = Path(value)
+        if not root.is_absolute() or root.is_symlink() or not root.is_dir():
+            raise AdapterError("Migration source must be a real absolute directory")
+        resolved = root.resolve(strict=True)
+        if resolved != root:
+            raise AdapterError("Migration source must be canonical and symlink-free")
+        return resolved
+
+    @staticmethod
+    def _read_migration_file(root: Path, relative: str) -> bytes:
+        path = root.joinpath(*PurePosixPath(validate_target_path(relative)).parts)
+        current = root
+        for part in path.relative_to(root).parts:
+            current = current / part
+            if current.is_symlink():
+                raise AdapterError("Migration payload traverses a symlink")
+        if not path.is_file():
+            raise AdapterError(f"Migration payload is unavailable: {relative}")
+        try:
+            if path.resolve(strict=True).relative_to(root) != path.relative_to(root):
+                raise AdapterError("Migration payload is not canonical")
+        except ValueError as exc:
+            raise AdapterError("Migration payload escapes its source root") from exc
+        return path.read_bytes()
 
     @staticmethod
     def _project_root(value: str) -> Path:

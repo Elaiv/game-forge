@@ -12,6 +12,7 @@ from pathlib import Path
 from forge_game_control.cli import main
 from forge_game_control.engineering_rules import EngineeringRuleCatalog
 from forge_game_control.schemas import SchemaRegistry
+from forge_game_control.storage_layout import canonical_policy_document
 from forge_game_control.template_registry import TemplateRegistry
 from forge_game_control.workflows import WorkflowRegistry
 from forge_game_control import __version__
@@ -61,8 +62,8 @@ class CliTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertEqual(stderr, "")
         self.assertTrue(response["ok"])
-        self.assertEqual(response["data"]["template_set_version"], "1.8.0")
-        self.assertEqual(len(response["data"]["template_ids"]), 21)
+        self.assertEqual(response["data"]["template_set_version"], "1.9.0")
+        self.assertEqual(len(response["data"]["template_ids"]), 22)
 
     @unittest.skipUnless(shutil.which("git"), "Git is required for preflight")
     def test_forward_test_preflight_accepts_clean_real_unreal_bootstrap_fixture(self) -> None:
@@ -113,7 +114,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertEqual(stderr, "")
         report = response["data"]["report"]
-        self.assertEqual(report["status"], "ready")
+        self.assertEqual(report["status"], "ready", report)
         self.assertEqual(report["workflow_id"], "bootstrap")
         self.assertEqual(report["blocking_check_ids"], [])
         self.assertRegex(report["content_hash"], r"^sha256:[0-9a-f]{64}$")
@@ -129,7 +130,11 @@ class CliTests(unittest.TestCase):
                 encoding="utf-8",
             )
             (root / ".gitignore").write_text(
-                ".forge-game/runtime/\n.forge-game/worktrees/\n",
+                ".forge-game/runtime/\n"
+                ".forge-game/worktrees/\n"
+                ".forge-game/runtime-env/\n"
+                ".forge-game/runtime-env.failed-*/\n"
+                ".forge-game/tmp/\n",
                 encoding="utf-8",
             )
             for relative in (
@@ -179,6 +184,9 @@ class CliTests(unittest.TestCase):
                     }
                 ),
                 encoding="utf-8",
+            )
+            (manifest.parent / "storage-layout.json").write_text(
+                json.dumps(canonical_policy_document()), encoding="utf-8"
             )
             schemas = SchemaRegistry()
             catalog = EngineeringRuleCatalog(schemas)
@@ -269,7 +277,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         self.assertEqual(stderr, "")
         report = response["data"]["report"]
-        self.assertEqual(report["status"], "ready")
+        self.assertEqual(report["status"], "ready", report)
         self.assertIn("workflow.optional_actions", report["warning_check_ids"])
         self.assertEqual(report["blocking_check_ids"], [])
 
@@ -313,7 +321,7 @@ class CliTests(unittest.TestCase):
                         "project_id": "cli-test",
                         "revision": 1,
                         "previous_content_hash": None,
-                        "forge_game_version": "0.16.0",
+                        "forge_game_version": "0.17.0",
                         "workflow_versions": {"feature": "2.1.0"},
                         "template_version": "1.6.0",
                         "engineering_policy": {

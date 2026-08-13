@@ -12,6 +12,7 @@ from .errors import AdapterError
 from .json_io import load_json
 from .path_boundary import normalize_git_ref
 from .schemas import SchemaRegistry
+from .storage_layout import ProjectStorageLayout
 from .template_registry import bytes_hash, validate_target_path
 from .unreal_mcp import build_unreal_operation
 
@@ -45,6 +46,7 @@ class ToolPlanBuilder:
         self.schemas.validate(request, TOOL_PLAN_REQUEST_SCHEMA)
         request_hash = self._verify_hash(request, "ToolPlanRequest")
         project_root = self._project_root(request["project_root"])
+        layout = ProjectStorageLayout.resolve(project_root, schemas=self.schemas)
         adapter_id = request["adapter_id"]
         action_id = request["action_id"]
         reasons: list[str] = []
@@ -54,7 +56,7 @@ class ToolPlanBuilder:
             "provider_profile_hash": None,
             "host_tool_names": [],
         }
-        subject_hashes = [request_hash]
+        subject_hashes = [request_hash, layout.document["content_hash"]]
 
         if adapter_id == "git" and action_id in GIT_ACTIONS:
             operations, before = self._git_plan(

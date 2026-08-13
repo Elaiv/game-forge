@@ -87,7 +87,15 @@ def main() -> int:
         return _emit(False, code="invalid_project_root", message="project root must be absolute")
     if project_root.is_symlink() or not project_root.is_dir():
         return _emit(False, code="invalid_project_root", message="project root must be a real directory")
-    project_root = project_root.resolve(strict=True)
+    resolved_project_root = project_root.resolve(strict=True)
+    if resolved_project_root != project_root:
+        return _emit(False, code="invalid_project_root", message="project root must be canonical and symlink-free")
+    current = Path(project_root.anchor)
+    for part in project_root.parts[1:]:
+        current = current / part
+        if current.is_symlink():
+            return _emit(False, code="invalid_project_root", message="project root must be symlink-free")
+    project_root = resolved_project_root
 
     skill_root = Path(__file__).resolve().parents[1]
     lock = skill_root / "requirements.lock"
@@ -95,8 +103,12 @@ def main() -> int:
         return _emit(False, code="invalid_package", message="requirements.lock is unavailable")
 
     forge_root = project_root / ".forge-game"
-    if forge_root.is_symlink():
-        return _emit(False, code="unsafe_target", message=".forge-game cannot be a symlink")
+    if forge_root.is_symlink() or (forge_root.exists() and not forge_root.is_dir()):
+        return _emit(
+            False,
+            code="unsafe_target",
+            message=".forge-game must be a real directory",
+        )
     forge_root.mkdir(mode=0o755, exist_ok=True)
     runtime_root = forge_root / "runtime-env"
     if runtime_root.exists() or runtime_root.is_symlink():

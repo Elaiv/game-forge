@@ -49,7 +49,7 @@ def refresh_start_request(project_root: Path) -> dict[str, object]:
         "schema_version": "1.1.0",
         "entrypoint": "refresh",
         "project_root": str(project_root.resolve()),
-        "inputs": {"target_forge_game_version": "0.16.0"},
+        "inputs": {"target_forge_game_version": "0.17.0"},
     }
 
 
@@ -1106,11 +1106,12 @@ class WorkflowRuntimeTests(unittest.TestCase):
     def test_cli_starts_run_with_one_machine_response(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()
+            (root / "Test.uproject").write_text("{}", encoding="utf-8")
             request_path = root / "command.json"
             request_path.write_text(
                 json.dumps(
                     {
-                        "runtime_root": str(root / "runtime"),
+                        "runtime_root": str(root / ".forge-game/runtime/workflows"),
                         "start_request": start_request(root),
                         "project_state_base": {"revision": 0, "content_hash": None},
                         "read_set": [],

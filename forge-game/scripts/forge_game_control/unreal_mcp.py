@@ -30,6 +30,7 @@ GRANT_SCHEMA = "forge-game://schemas/action-grant/1.0.0"
 ACTION_RESULT_SCHEMA = "forge-game://schemas/action-result/1.0.0"
 TOOL_EVENT_SCHEMA = "forge-game://schemas/tool-operation-event/1.0.0"
 TOOL_EXECUTION_REQUEST_SCHEMA = "forge-game://schemas/tool-execution-request/1.0.0"
+LAYOUT_TOOL_EXECUTION_REQUEST_SCHEMA = "forge-game://schemas/tool-execution-request/1.1.0"
 POLICY_DECISION_SCHEMA = "forge-game://schemas/policy-decision/1.0.0"
 RESOURCE_PACKAGE = "forge_game_control.resources"
 GRANT_TTL_SECONDS = 120
@@ -360,7 +361,13 @@ class UnrealMcpGrantStore:
         if not all(isinstance(item, dict) for item in (grant, request, decision)):
             raise UnknownEffectError("Unreal MCP execution journal is invalid")
         self.schemas.validate(grant, GRANT_SCHEMA)
-        self.schemas.validate(request, TOOL_EXECUTION_REQUEST_SCHEMA)
+        request_schema = request.get("schema_id")
+        if request_schema not in {
+            TOOL_EXECUTION_REQUEST_SCHEMA,
+            LAYOUT_TOOL_EXECUTION_REQUEST_SCHEMA,
+        }:
+            raise UnknownEffectError("Stored ToolExecutionRequest schema is unsupported")
+        self.schemas.validate(request, request_schema)
         self.schemas.validate(decision, POLICY_DECISION_SCHEMA)
         _verify_envelope(grant, "ActionGrant")
         _verify_envelope(request, "ToolExecutionRequest")
@@ -472,7 +479,13 @@ class UnrealMcpGrantStore:
         request = load_json(execution_root / "request.json")
         if not isinstance(request, dict):
             raise ActionExecutionError("Stored Unreal ToolExecutionRequest is invalid")
-        self.schemas.validate(request, TOOL_EXECUTION_REQUEST_SCHEMA)
+        request_schema = request.get("schema_id")
+        if request_schema not in {
+            TOOL_EXECUTION_REQUEST_SCHEMA,
+            LAYOUT_TOOL_EXECUTION_REQUEST_SCHEMA,
+        }:
+            raise ActionExecutionError("Stored ToolExecutionRequest schema is unsupported")
+        self.schemas.validate(request, request_schema)
         _verify_envelope(request, "ToolExecutionRequest")
         return request["intent"]["targets"]
 

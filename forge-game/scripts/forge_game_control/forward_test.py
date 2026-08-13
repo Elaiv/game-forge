@@ -15,6 +15,7 @@ from .errors import InvalidRequestError
 from .json_io import load_json, loads_json
 from .package_validation import _workflow_readiness
 from .schemas import SchemaRegistry
+from .storage_layout import ProjectStorageLayout
 from .template_registry import TemplateRegistry, validate_target_path
 from .workflows import WorkflowRegistry
 
@@ -65,6 +66,7 @@ class ForwardTestPreflight:
         if root is not None:
             uproject_path = self._uproject(root, checks)
             self._git_baseline(root, checks)
+            self._storage_layout(root, workflow_id, checks)
         self._workflow_executor_readiness(workflow_id, checks)
 
         if workflow_id == "bootstrap":
@@ -165,6 +167,41 @@ class ForwardTestPreflight:
             return None
         self._add(checks, "project.root", "pass", "Project root is canonical.", [canonical])
         return root
+
+    def _storage_layout(
+        self,
+        root: Path,
+        workflow_id: str,
+        checks: list[dict[str, Any]],
+    ) -> None:
+        try:
+            layout = ProjectStorageLayout.resolve(root, schemas=self.schemas)
+            report = layout.diagnose(entrypoint=workflow_id)
+        except Exception as exc:
+            self._add(
+                checks,
+                "storage.layout",
+                "fail",
+                "Canonical project storage layout could not be resolved.",
+                [str(exc)],
+            )
+            return
+        if report["readiness"] != "ready":
+            self._add(
+                checks,
+                "storage.layout",
+                "fail",
+                "Canonical project storage layout has blocking drift.",
+                [f"{item['code']}: {item['message']}" for item in report["blockers"]],
+            )
+            return
+        self._add(
+            checks,
+            "storage.layout",
+            "pass",
+            "Canonical project storage layout is sealed and ready.",
+            [layout.document["content_hash"]],
+        )
 
     def _uproject(self, root: Path, checks: list[dict[str, Any]]) -> str | None:
         projects = sorted(

@@ -30,6 +30,7 @@ from .json_io import load_json
 from .policy import PolicyEvaluator
 from .run_lock import RunFileLock
 from .schemas import SchemaRegistry
+from .storage_layout import ProjectStorageLayout
 from .tool_adapters import ToolPlanBuilder, _safe_environment
 from .unreal_mcp import GRANT_SCHEMA, UnrealMcpGrantStore
 from .workflows import WorkflowRegistry
@@ -37,6 +38,7 @@ from .workflows import WorkflowRegistry
 
 ACTION_RESULT_SCHEMA = "forge-game://schemas/action-result/1.0.0"
 TOOL_EXECUTION_REQUEST_SCHEMA = "forge-game://schemas/tool-execution-request/1.0.0"
+LAYOUT_TOOL_EXECUTION_REQUEST_SCHEMA = "forge-game://schemas/tool-execution-request/1.1.0"
 TOOL_OPERATION_EVENT_SCHEMA = "forge-game://schemas/tool-operation-event/1.0.0"
 MAX_LOG_BYTES = 4 * 1024 * 1024
 DEFAULT_TIMEOUTS = {
@@ -139,6 +141,7 @@ class ToolActionExecutor:
         runner: BoundedProcessRunner | None = None,
         timeouts: dict[str, int] | None = None,
         host_verifier: LocalHostCapabilityVerifier | None = None,
+        allow_legacy_custom_roots: bool = True,
     ):
         self.schemas = schemas
         self.workflows = workflows
@@ -150,13 +153,21 @@ class ToolActionExecutor:
         self.host_verifier = host_verifier or LocalHostCapabilityVerifier(
             schemas, adapters
         )
+        self.allow_legacy_custom_roots = allow_legacy_custom_roots
 
     def execute(self, request: dict[str, Any]) -> dict[str, Any]:
-        self.schemas.validate(request, TOOL_EXECUTION_REQUEST_SCHEMA)
+        schema_id = request.get("schema_id")
+        if schema_id not in {
+            TOOL_EXECUTION_REQUEST_SCHEMA,
+            LAYOUT_TOOL_EXECUTION_REQUEST_SCHEMA,
+        }:
+            raise ActionExecutionError("Unsupported ToolExecutionRequest schema")
+        self.schemas.validate(request, schema_id)
         request_hash = self._verify_hash(request, "ToolExecutionRequest")
         intent = request["intent"]
         context = request["policy_context"]
         supplied_plan = request["adapter_plan"]
+        self._validate_storage_layout(request, supplied_plan)
         if supplied_plan["status"] != "ready":
             raise ActionExecutionError(
                 f"Tool adapter plan is not executable: {supplied_plan['status']}"
@@ -284,6 +295,30 @@ class ToolActionExecutor:
                 "result": result,
                 "transaction_root": str(execution_root),
             }
+
+    def _validate_storage_layout(
+        self, request: dict[str, Any], plan: dict[str, Any]
+    ) -> None:
+        if request["schema_id"] != LAYOUT_TOOL_EXECUTION_REQUEST_SCHEMA:
+            if not self.allow_legacy_custom_roots:
+                raise ActionExecutionError(
+                    "Legacy ToolExecutionRequest requires the explicit compatibility/migration path"
+                )
+            return
+        layout = ProjectStorageLayout.resolve(
+            request["policy_context"]["project_root"], schemas=self.schemas
+        )
+        layout.require_ref(request["storage_layout_ref"])
+        layout.require_explicit_root(
+            "runtime_root", request["runtime_root"], create=True
+        )
+        layout.require_explicit_root(
+            "approval_store", request["approval_store_root"], create=True
+        )
+        if layout.document["content_hash"] not in plan["subject_hashes"]:
+            raise ActionExecutionError(
+                "ToolAdapterPlan does not bind the sealed project storage layout"
+            )
 
     def _prior_unreal_execution(
         self,

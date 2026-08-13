@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "forge-game://schemas/adapter-plan-request/1.2.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_id", "schema_version", "request_id", "adapter_id", "action_id", "project_root", "migration_plan", "planned_at", "content_hash"],
+  "properties": {
+    "schema_id": {"const": "forge-game://schemas/adapter-plan-request/1.2.0"},
+    "schema_version": {"const": "1.2.0"},
+    "request_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "adapter_id": {"const": "filesystem"},
+    "action_id": {"const": "storage.layout.migrate"},
+    "project_root": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "migration_plan": {"$ref": "forge-game://schemas/storage-layout-migration-plan/1.0.0"},
+    "planned_at": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/timestamp"},
+    "content_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+  }
+}

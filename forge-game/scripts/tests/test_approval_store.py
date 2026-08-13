@@ -210,12 +210,13 @@ class ApprovalStoreTests(unittest.TestCase):
 
     def test_cli_publishes_and_verifies_stored_approval(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            store_root = root / "approvals"
+            root = Path(directory).resolve()
+            store_root = root / ".forge-game/runtime/approvals"
             publish_request = root / "publish.json"
             publish_request.write_text(
                 json.dumps(
                     {
+                        "project_root": str(root),
                         "store_root": str(store_root),
                         "record": approval_record(),
                     }
@@ -231,6 +232,7 @@ class ApprovalStoreTests(unittest.TestCase):
             verify_request.write_text(
                 json.dumps(
                     {
+                        "project_root": str(root),
                         "store_root": str(store_root),
                         "approval_id": "approval-001",
                         "context": verification_context(),

@@ -122,13 +122,14 @@ class ArtifactStoreTests(unittest.TestCase):
 
     def test_cli_publishes_bundle_and_returns_immutable_reference(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
+            root = Path(directory).resolve()
             bundle, document = create_bundle(root)
             request = root / "request.json"
             request.write_text(
                 json.dumps(
                     {
-                        "store_root": str(root / "artifacts"),
+                        "project_root": str(root),
+                        "store_root": str(root / ".forge-game/runtime/artifacts"),
                         "bundle_path": str(bundle),
                         "expected_previous_hash": None,
                     }

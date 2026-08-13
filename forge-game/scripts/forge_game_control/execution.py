@@ -23,10 +23,11 @@ from .immutable_storage import (
     fsync_file,
     publish_immutable_json,
 )
-from .json_io import load_json
+from .json_io import load_json, loads_json
 from .policy import PolicyEvaluator
 from .run_lock import RunFileLock
 from .schemas import SchemaRegistry
+from .storage_layout import ProjectStorageLayout, canonical_policy_document
 from .template_registry import bytes_hash
 from .workflows import WorkflowRegistry
 
@@ -34,6 +35,7 @@ from .workflows import WorkflowRegistry
 ACTION_RESULT_SCHEMA = "forge-game://schemas/action-result/1.0.0"
 EXECUTION_REQUEST_SCHEMA = "forge-game://schemas/execution-request/1.0.0"
 RECORD_EXECUTION_REQUEST_SCHEMA = "forge-game://schemas/execution-request/1.1.0"
+LAYOUT_EXECUTION_REQUEST_SCHEMA = "forge-game://schemas/execution-request/1.2.0"
 TRANSACTION_EVENT_SCHEMA = "forge-game://schemas/transaction-event/1.0.0"
 
 
@@ -47,6 +49,7 @@ class ActionExecutor:
         *,
         fail_after_targets: int | None = None,
         host_verifier: LocalHostCapabilityVerifier | None = None,
+        allow_legacy_custom_roots: bool = True,
     ):
         self.schemas = schemas
         self.workflows = workflows
@@ -57,12 +60,14 @@ class ActionExecutor:
         self.host_verifier = host_verifier or LocalHostCapabilityVerifier(
             schemas, adapters
         )
+        self.allow_legacy_custom_roots = allow_legacy_custom_roots
 
     def execute(self, request: dict[str, Any]) -> dict[str, Any]:
         request_schema = request.get("schema_id")
         if request_schema not in {
             EXECUTION_REQUEST_SCHEMA,
             RECORD_EXECUTION_REQUEST_SCHEMA,
+            LAYOUT_EXECUTION_REQUEST_SCHEMA,
         }:
             raise ActionExecutionError("Unsupported ExecutionRequest schema")
         self.schemas.validate(request, request_schema)
@@ -70,6 +75,7 @@ class ActionExecutor:
         intent = request["intent"]
         context = request["policy_context"]
         supplied_plan = request["adapter_plan"]
+        self._validate_storage_layout(request, supplied_plan)
         if supplied_plan["status"] != "ready":
             raise ActionExecutionError(
                 f"Adapter plan is not executable: {supplied_plan['status']}"
@@ -339,6 +345,66 @@ class ActionExecutor:
         result["content_hash"] = envelope_content_hash(result)
         self.schemas.validate(result, ACTION_RESULT_SCHEMA)
         return result
+
+    def _validate_storage_layout(
+        self, request: dict[str, Any], plan: dict[str, Any]
+    ) -> None:
+        schema_id = request["schema_id"]
+        if schema_id != LAYOUT_EXECUTION_REQUEST_SCHEMA:
+            if not self.allow_legacy_custom_roots:
+                raise ActionExecutionError(
+                    "Legacy ExecutionRequest requires the explicit compatibility/migration path"
+                )
+            return
+        action_id = plan["action_id"]
+        refresh_policy_repair = (
+            action_id == "project.files.apply"
+            and request["intent"]["workflow_id"] == "refresh"
+        )
+        explicit_migration = action_id == "storage.layout.migrate"
+        layout = ProjectStorageLayout.resolve(
+            request["policy_context"]["project_root"],
+            schemas=self.schemas,
+            allow_installed_policy_drift=(
+                refresh_policy_repair or explicit_migration
+            ),
+        )
+        layout.require_ref(request["storage_layout_ref"])
+        layout.require_explicit_root(
+            "runtime_root", request["runtime_root"], create=True
+        )
+        layout.require_explicit_root(
+            "approval_store", request["approval_store_root"], create=True
+        )
+        if layout.document["content_hash"] not in plan["subject_hashes"]:
+            raise ActionExecutionError(
+                "AdapterPlan does not bind the sealed project storage layout"
+            )
+        if refresh_policy_repair:
+            policy_targets = [
+                target
+                for target in plan["targets"]
+                if target["target_path"]
+                == ".forge-game/manifests/storage-layout.json"
+            ]
+            if len(policy_targets) != 1:
+                raise ActionExecutionError(
+                    "Refresh under storage-policy drift must repair the canonical policy"
+                )
+            payloads = self.filesystem.materialize_payloads(
+                plan, request["adapter_plan_request"]
+            )
+            payload = payloads.get(policy_targets[0]["target_id"])
+            try:
+                policy = loads_json(payload.decode("utf-8")) if payload else None
+            except Exception as exc:
+                raise ActionExecutionError(
+                    "Refresh storage policy repair payload is invalid"
+                ) from exc
+            if policy != canonical_policy_document():
+                raise ActionExecutionError(
+                    "Refresh storage policy repair payload is not canonical"
+                )
 
     def _rollback(
         self,

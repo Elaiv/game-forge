@@ -19,18 +19,19 @@ class RegistryTests(unittest.TestCase):
         self.actions = ActionCatalog(self.schemas, self.workflows)
 
     def test_loads_expected_contract_catalog(self) -> None:
-        self.assertEqual(len(self.schemas.ids()), 82)
+        self.assertEqual(len(self.schemas.ids()), 93)
         self.assertEqual(
             self.workflows.ids(),
             ("bootstrap", "feature", "refresh", "release"),
         )
-        self.assertEqual(len(self.actions.ids()), 18)
+        self.assertEqual(len(self.actions.ids()), 19)
         executable = {
             "build.package",
             "build.preflight",
             "project.files.apply",
             "project.patch.apply",
             "project.records.publish",
+            "storage.layout.migrate",
             "runtime.cleanup",
             "test.gated.run",
             "unreal.mutate",

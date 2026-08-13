@@ -20,6 +20,7 @@ from forge_game_control.hook_gateway import evaluate_post_tool, evaluate_pre_too
 from forge_game_control.json_io import load_json
 from forge_game_control.projection import ProjectionBuilder
 from forge_game_control.schemas import SchemaRegistry
+from forge_game_control.storage_layout import ProjectStorageLayout
 from forge_game_control.template_registry import TemplateRegistry, bytes_hash
 from forge_game_control.tool_adapters import ToolPlanBuilder, _safe_environment
 from forge_game_control.tool_execution import BoundedProcessRunner, ToolActionExecutor
@@ -755,6 +756,55 @@ class ToolExecutionTests(unittest.TestCase):
             )
 
     @unittest.skipUnless(GIT, "Git is required for adapter integration")
+    def test_layout_bound_tool_execution_and_reconciliation_use_canonical_journals(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            self._initialize_repository(root)
+            self._write_command(root, mutate=False)
+            plan_request, plan = self._plan(
+                root,
+                "build",
+                "build.preflight",
+                [
+                    {
+                        "target_id": "project",
+                        "kind": "path",
+                        "value": "README.md",
+                        "expected_hash": None,
+                    }
+                ],
+                {"command_id": "build.preflight"},
+            )
+            request = self._execution_request(
+                root,
+                plan_request,
+                plan,
+                workflow_id="bootstrap",
+                workflow_version="1.4.0",
+                phase_id="bootstrap.verify",
+                role="verifier",
+                required_capabilities=["build.run"],
+                guard_ids=["command.registered"],
+                request_id="layout-tool-reconcile",
+                layout_bound=True,
+            )
+            layout = ProjectStorageLayout.resolve(root, schemas=self.schemas)
+            executed = self._executor().execute(request)
+            reconciled = self._reconcile(
+                request, "layout-tool-reconciled", "2026-08-05T07:03:01Z"
+            )
+            self.assertTrue(
+                Path(executed["transaction_root"]).is_relative_to(
+                    layout.path("execution_journals")
+                )
+            )
+            self.assertEqual(reconciled["reconciliation"]["status"], "succeeded")
+            self.assertEqual(
+                Path(reconciled["evidence_path"]).parent,
+                layout.path("reconciliation_evidence"),
+            )
+
+    @unittest.skipUnless(GIT, "Git is required for adapter integration")
     def test_lfs_unlock_plan_never_uses_force(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -893,6 +943,7 @@ class ToolExecutionTests(unittest.TestCase):
         required_capabilities: list[str],
         guard_ids: list[str],
         request_id: str = "tool-execution-001",
+        layout_bound: bool = False,
     ) -> dict[str, object]:
         action_id = plan["action_id"]
         adapter_id = plan["adapter_id"]
@@ -981,7 +1032,11 @@ class ToolExecutionTests(unittest.TestCase):
             "content_hash": "sha256:" + "0" * 64,
         }
         seal(approval)
-        approval_root = root / ".test-approvals" / request_id
+        approval_root = (
+            root / ".forge-game/runtime/approvals"
+            if layout_bound
+            else root / ".test-approvals" / request_id
+        )
         ApprovalStore(self.schemas, approval_root).publish(approval)
         verification: dict[str, object] = {
             "schema_id": "forge-game://schemas/approval-verification-context/1.0.0",
@@ -1000,8 +1055,12 @@ class ToolExecutionTests(unittest.TestCase):
         }
         seal(verification)
         request: dict[str, object] = {
-            "schema_id": "forge-game://schemas/tool-execution-request/1.0.0",
-            "schema_version": "1.0.0",
+            "schema_id": (
+                "forge-game://schemas/tool-execution-request/1.1.0"
+                if layout_bound
+                else "forge-game://schemas/tool-execution-request/1.0.0"
+            ),
+            "schema_version": "1.1.0" if layout_bound else "1.0.0",
             "request_id": request_id,
             "intent": intent,
             "policy_context": context,
@@ -1009,10 +1068,18 @@ class ToolExecutionTests(unittest.TestCase):
             "approval_verification_contexts": {approval_id: verification},
             "adapter_plan_request": plan_request,
             "adapter_plan": plan,
-            "runtime_root": str(root / ".test-runtime"),
+            "runtime_root": str(
+                root / ".forge-game/runtime"
+                if layout_bound
+                else root / ".test-runtime"
+            ),
             "requested_at": "2026-08-05T07:02:30Z",
             "content_hash": "sha256:" + "0" * 64,
         }
+        if layout_bound:
+            request["storage_layout_ref"] = ProjectStorageLayout.resolve(
+                root, schemas=self.schemas
+            ).ref()
         return seal(request)
 
     def _executor(self) -> ToolActionExecutor:
@@ -1029,9 +1096,16 @@ class ToolExecutionTests(unittest.TestCase):
         request_id: str,
         reconciled_at: str,
     ) -> dict[str, object]:
+        layout_bound = execution_request["schema_id"] == (
+            "forge-game://schemas/tool-execution-request/1.1.0"
+        )
         request: dict[str, object] = {
-            "schema_id": "forge-game://schemas/tool-reconciliation-request/1.0.0",
-            "schema_version": "1.0.0",
+            "schema_id": (
+                "forge-game://schemas/tool-reconciliation-request/1.1.0"
+                if layout_bound
+                else "forge-game://schemas/tool-reconciliation-request/1.0.0"
+            ),
+            "schema_version": "1.1.0" if layout_bound else "1.0.0",
             "request_id": request_id,
             "execution_request": execution_request,
             "reconciled_at": reconciled_at,
@@ -1055,7 +1129,8 @@ class ToolExecutionTests(unittest.TestCase):
         exclude = root / ".git" / "info" / "exclude"
         with exclude.open("a", encoding="utf-8") as stream:
             stream.write(
-                "\n.test-approvals/\n.test-runtime/\n.forge-game/worktrees/\n"
+                "\n.test-approvals/\n.test-runtime/\n.forge-game/runtime/\n"
+                ".forge-game/worktrees/\n"
             )
 
     @staticmethod

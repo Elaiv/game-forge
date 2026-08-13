@@ -1,7 +1,7 @@
 {
   "schema_id": "forge-game://schemas/action-catalog/1.0.0",
   "schema_version": "1.0.0",
-  "catalog_version": "1.1.0",
+  "catalog_version": "1.2.0",
   "actions": {
     "build.configure": {
       "action_id": "build.configure",
@@ -165,6 +165,17 @@
       "approval_mode": "scoped",
       "capability_any_of": [["git.write"]],
       "required_guard_fact_ids": ["runtime.target.allowed"],
+      "allowed_target_kinds": ["path"],
+      "allowed_command_ids": []
+    },
+    "storage.layout.migrate": {
+      "action_id": "storage.layout.migrate",
+      "action_class": "runtime_mutation",
+      "adapter_id": "filesystem",
+      "side_effect": true,
+      "approval_mode": "scoped",
+      "capability_any_of": [["filesystem.write"]],
+      "required_guard_fact_ids": ["storage.layout.approved"],
       "allowed_target_kinds": ["path"],
       "allowed_command_ids": []
     },

@@ -81,6 +81,10 @@ class SourceConflictError(SourceNormalizationError):
     exit_code = 4
 
 
+class ProjectStorageError(ForgeGameError):
+    code = "project_storage_error"
+
+
 class TraceabilityError(ForgeGameError):
     code = "traceability_error"
 

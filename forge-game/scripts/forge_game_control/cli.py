@@ -15,6 +15,7 @@ from .errors import (
     DocumentValidationError,
     ForgeGameError,
     InvalidRequestError,
+    ProjectStorageError,
 )
 from .execution import ActionExecutor
 from .engineering_rules import EngineeringRuleCatalog, repository_snapshot
@@ -22,6 +23,7 @@ from .filesystem_adapter import FilesystemAdapter
 from .forward_test import ForwardTestPreflight
 from .hook_gateway import evaluate_pre_tool
 from .json_io import dumps_pretty, load_json, loads_json
+from .immutable_storage import ensure_child_directory, publish_immutable_json
 from .merge_drivers import MergeDriverRegistry
 from .package_validation import doctor, validate_package
 from .policy import PolicyEvaluator
@@ -32,6 +34,7 @@ from .slice_model_migration import SliceModelMigration
 from .source_diff import SourceDiffer
 from .source_normalization import SourceBundleStore
 from .state import StateStore
+from .storage_layout import ProjectStorageLayout
 from .traceability import TraceabilityGraph
 from .template_registry import TemplateRegistry
 from .tool_adapters import ToolPlanBuilder
@@ -66,8 +69,21 @@ def _require(request: dict[str, Any], field: str, expected: type) -> Any:
     return value
 
 
-def _command_doctor(_: dict[str, Any]) -> dict[str, Any]:
-    return doctor()
+def _command_doctor(request: dict[str, Any]) -> dict[str, Any]:
+    project_root = request.get("project_root")
+    if project_root is not None and not isinstance(project_root, str):
+        raise InvalidRequestError("project_root must be a string or null")
+    entrypoint = request.get("entrypoint")
+    if entrypoint is not None and entrypoint not in {"bootstrap", "feature", "refresh", "release"}:
+        raise InvalidRequestError("entrypoint must name one forge-game workflow or null")
+    legacy_roots = request.get("legacy_roots")
+    if legacy_roots is not None and not isinstance(legacy_roots, dict):
+        raise InvalidRequestError("legacy_roots must be an object or null")
+    return doctor(
+        project_root=project_root,
+        entrypoint=entrypoint,
+        legacy_roots=legacy_roots,
+    )
 
 
 def _command_validate_package(_: dict[str, Any]) -> dict[str, Any]:
@@ -140,12 +156,16 @@ def _command_projection_render(request: dict[str, Any]) -> dict[str, Any]:
         "projection_input_path",
     )
     schemas = SchemaRegistry()
+    layout = _layout_for_request(request)
+    staging_root = layout.require_explicit_root(
+        "projection_staging", request.get("staging_root"), create=True
+    )
     projection, bundle_root = ProjectionBuilder(
         schemas,
         TemplateRegistry(schemas),
     ).build(
         projection_input,
-        _require(request, "staging_root", str),
+        staging_root,
     )
     return {"projection": projection, "bundle_root": str(bundle_root)}
 
@@ -158,13 +178,20 @@ def _command_reconciliation_plan(request: dict[str, Any]) -> dict[str, Any]:
             raise InvalidRequestError(f"{field} must be a string or null")
         optional_paths[field] = value
     schemas = SchemaRegistry()
+    layout = _layout_for_request(request, schemas=schemas)
+    layout.require_staging_descendant(
+        "projection_staging", _require(request, "desired_bundle_root", str)
+    )
+    plan_store_root = layout.require_explicit_root(
+        "reconciliation_staging", request.get("plan_store_root"), create=True
+    )
     plan, bundle_root = ReconciliationPlanner(
         schemas,
         MergeDriverRegistry(),
     ).plan(
         project_root=_require(request, "project_root", str),
         desired_bundle_root=_require(request, "desired_bundle_root", str),
-        plan_store_root=_require(request, "plan_store_root", str),
+        plan_store_root=plan_store_root,
         project_id=_require(request, "project_id", str),
         created_at=_require(request, "created_at", str),
         ownership_manifest_path=optional_paths["ownership_manifest_path"],
@@ -240,6 +267,7 @@ def _command_adapter_plan(request: dict[str, Any]) -> dict[str, Any]:
         if request.get("schema_id") in {
             "forge-game://schemas/adapter-plan-request/1.0.0",
             "forge-game://schemas/adapter-plan-request/1.1.0",
+            "forge-game://schemas/adapter-plan-request/1.2.0",
         }
         else _request_document(request, "plan_request", "plan_request_path")
     )
@@ -253,6 +281,7 @@ def _command_action_execute(request: dict[str, Any]) -> dict[str, Any]:
         if request.get("schema_id") in {
             "forge-game://schemas/execution-request/1.0.0",
             "forge-game://schemas/execution-request/1.1.0",
+            "forge-game://schemas/execution-request/1.2.0",
         }
         else _request_document(request, "execution_request", "execution_request_path")
     )
@@ -264,6 +293,7 @@ def _command_action_execute(request: dict[str, Any]) -> dict[str, Any]:
         workflows,
         actions,
         AdapterRegistry(schemas),
+        allow_legacy_custom_roots=False,
     ).execute(execution_request)
 
 
@@ -273,6 +303,7 @@ def _command_action_reconcile(request: dict[str, Any]) -> dict[str, Any]:
         if request.get("schema_id") in {
             "forge-game://schemas/action-reconciliation-request/1.0.0",
             "forge-game://schemas/action-reconciliation-request/1.1.0",
+            "forge-game://schemas/action-reconciliation-request/1.2.0",
         }
         else _request_document(
             request,
@@ -280,7 +311,9 @@ def _command_action_reconcile(request: dict[str, Any]) -> dict[str, Any]:
             "reconciliation_request_path",
         )
     )
-    return FilesystemActionReconciler(SchemaRegistry()).reconcile(
+    return FilesystemActionReconciler(
+        SchemaRegistry(), allow_legacy_custom_roots=False
+    ).reconcile(
         reconciliation_request
     )
 
@@ -298,8 +331,10 @@ def _command_tool_plan(request: dict[str, Any]) -> dict[str, Any]:
 def _command_tool_execute(request: dict[str, Any]) -> dict[str, Any]:
     execution_request = (
         request
-        if request.get("schema_id")
-        == "forge-game://schemas/tool-execution-request/1.0.0"
+        if request.get("schema_id") in {
+            "forge-game://schemas/tool-execution-request/1.0.0",
+            "forge-game://schemas/tool-execution-request/1.1.0",
+        }
         else _request_document(request, "execution_request", "execution_request_path")
     )
     schemas = SchemaRegistry()
@@ -310,21 +345,26 @@ def _command_tool_execute(request: dict[str, Any]) -> dict[str, Any]:
         workflows,
         actions,
         AdapterRegistry(schemas),
+        allow_legacy_custom_roots=False,
     ).execute(execution_request)
 
 
 def _command_tool_reconcile(request: dict[str, Any]) -> dict[str, Any]:
     reconciliation_request = (
         request
-        if request.get("schema_id")
-        == "forge-game://schemas/tool-reconciliation-request/1.0.0"
+        if request.get("schema_id") in {
+            "forge-game://schemas/tool-reconciliation-request/1.0.0",
+            "forge-game://schemas/tool-reconciliation-request/1.1.0",
+        }
         else _request_document(
             request,
             "reconciliation_request",
             "reconciliation_request_path",
         )
     )
-    return ToolActionReconciler(SchemaRegistry()).reconcile(
+    return ToolActionReconciler(
+        SchemaRegistry(), allow_legacy_custom_roots=False
+    ).reconcile(
         reconciliation_request
     )
 
@@ -334,7 +374,7 @@ def _command_hook_check(request: dict[str, Any]) -> dict[str, Any]:
 
 
 def _command_artifact_publish(request: dict[str, Any]) -> dict[str, Any]:
-    store_root = _require(request, "store_root", str)
+    store_root = _canonical_store(request, "artifact_store")
     bundle_path = _require(request, "bundle_path", str)
     expected_previous_hash = request.get("expected_previous_hash")
     if expected_previous_hash is not None and not isinstance(
@@ -349,7 +389,7 @@ def _command_artifact_publish(request: dict[str, Any]) -> dict[str, Any]:
 
 
 def _command_artifact_read(request: dict[str, Any]) -> dict[str, Any]:
-    store_root = _require(request, "store_root", str)
+    store_root = _canonical_store(request, "artifact_store")
     workflow_id = _require(request, "workflow_id", str)
     artifact_id = _require(request, "artifact_id", str)
     revision = request.get("revision")
@@ -364,14 +404,14 @@ def _command_artifact_read(request: dict[str, Any]) -> dict[str, Any]:
 
 
 def _command_approval_publish(request: dict[str, Any]) -> dict[str, Any]:
-    store_root = _require(request, "store_root", str)
+    store_root = _canonical_store(request, "approval_store")
     record = _request_document(request, "record", "record_path")
     reference = ApprovalStore(SchemaRegistry(), store_root).publish(record)
     return {"approval": reference.to_dict()}
 
 
 def _command_approval_read(request: dict[str, Any]) -> dict[str, Any]:
-    store_root = _require(request, "store_root", str)
+    store_root = _canonical_store(request, "approval_store")
     approval_id = _require(request, "approval_id", str)
     store = ApprovalStore(SchemaRegistry(), store_root)
     record, reference = store.read(approval_id)
@@ -383,14 +423,14 @@ def _command_approval_read(request: dict[str, Any]) -> dict[str, Any]:
 
 
 def _command_approval_record_event(request: dict[str, Any]) -> dict[str, Any]:
-    store_root = _require(request, "store_root", str)
+    store_root = _canonical_store(request, "approval_store")
     event = _request_document(request, "event", "event_path")
     reference = ApprovalStore(SchemaRegistry(), store_root).record_event(event)
     return {"event": reference.to_dict()}
 
 
 def _command_approval_verify(request: dict[str, Any]) -> dict[str, Any]:
-    store_root = _require(request, "store_root", str)
+    store_root = _canonical_store(request, "approval_store")
     approval_id = _require(request, "approval_id", str)
     context = _request_document(request, "context", "context_path")
     schemas = SchemaRegistry()
@@ -402,7 +442,7 @@ def _command_approval_verify(request: dict[str, Any]) -> dict[str, Any]:
 
 
 def _command_source_normalize(request: dict[str, Any]) -> dict[str, Any]:
-    store_root = _require(request, "store_root", str)
+    store_root = _canonical_store(request, "normalized_source_store")
     source_set_id = _require(request, "source_set_id", str)
     sources = _require(request, "sources", list)
     expected_previous_hash = request.get("expected_previous_hash")
@@ -429,7 +469,7 @@ def _command_source_read(request: dict[str, Any]) -> dict[str, Any]:
         raise InvalidRequestError("revision must be an integer or null")
     store = SourceBundleStore(
         SchemaRegistry(),
-        _require(request, "store_root", str),
+        _canonical_store(request, "normalized_source_store"),
     )
     manifest, sources, reference = store.read_normalized_sources(
         _require(request, "source_set_id", str),
@@ -451,7 +491,9 @@ def _command_source_diff(request: dict[str, Any]) -> dict[str, Any]:
         if type(reference.get("revision")) is not int:
             raise InvalidRequestError(f"{label}.revision must be an integer")
     schemas = SchemaRegistry()
-    store = SourceBundleStore(schemas, _require(request, "store_root", str))
+    store = SourceBundleStore(
+        schemas, _canonical_store(request, "normalized_source_store")
+    )
     document = SourceDiffer(schemas, store).compare(
         base["source_set_id"],
         base["revision"],
@@ -517,14 +559,23 @@ def _request_document(
 
 
 def _runtime_from_request(request: dict[str, Any]) -> WorkflowRuntime:
-    runtime_root = _require(request, "runtime_root", str)
+    schemas = SchemaRegistry()
+    layout = _layout_for_request(request, schemas=schemas)
+    runtime_root = layout.require_explicit_root(
+        "workflow_store", request.get("runtime_root"), create=True
+    )
     artifact_store_root = request.get("artifact_store_root")
     if artifact_store_root is not None and not isinstance(artifact_store_root, str):
         raise InvalidRequestError("artifact_store_root must be a string or null")
     approval_store_root = request.get("approval_store_root")
     if approval_store_root is not None and not isinstance(approval_store_root, str):
         raise InvalidRequestError("approval_store_root must be a string or null")
-    schemas = SchemaRegistry()
+    artifact_store_root = layout.require_explicit_root(
+        "artifact_store", artifact_store_root, create=True
+    )
+    approval_store_root = layout.require_explicit_root(
+        "approval_store", approval_store_root, create=True
+    )
     adapters = AdapterRegistry(schemas)
     return WorkflowRuntime(
         schemas,
@@ -532,8 +583,102 @@ def _runtime_from_request(request: dict[str, Any]) -> WorkflowRuntime:
         runtime_root,
         artifact_store_root=artifact_store_root,
         approval_store_root=approval_store_root,
+        storage_layout=layout,
         executable_action_ids=set(adapters.executable_action_ids()),
     )
+
+
+def _command_storage_layout_resolve(request: dict[str, Any]) -> dict[str, Any]:
+    schemas = SchemaRegistry()
+    entrypoint = request.get("entrypoint")
+    layout = _layout_for_request(
+        request,
+        schemas=schemas,
+        allow_installed_policy_drift=entrypoint == "refresh",
+    )
+    legacy_roots = request.get("legacy_roots")
+    if legacy_roots is not None and not isinstance(legacy_roots, dict):
+        raise InvalidRequestError("legacy_roots must be an object or null")
+    if entrypoint is not None and entrypoint not in {"bootstrap", "feature", "refresh", "release"}:
+        raise InvalidRequestError("entrypoint must name one forge-game workflow or null")
+    return layout.diagnose(entrypoint=entrypoint, legacy_roots=legacy_roots)
+
+
+def _command_storage_layout_migration_plan(
+    request: dict[str, Any]
+) -> dict[str, Any]:
+    schemas = SchemaRegistry()
+    layout = _layout_for_request(
+        request, schemas=schemas, allow_installed_policy_drift=True
+    )
+    legacy_roots = request.get("legacy_roots")
+    if legacy_roots is not None and not isinstance(legacy_roots, dict):
+        raise InvalidRequestError("legacy_roots must be an object or null")
+    plan = layout.migration_plan(
+        legacy_roots=legacy_roots,
+        planned_at=_require(request, "planned_at", str),
+        schemas=schemas,
+    )
+    staging = layout.require_explicit_root(
+        "migration_staging", request.get("plan_store_root"), create=True
+    )
+    directory = ensure_child_directory(
+        staging, [plan["plan_id"]], ProjectStorageError
+    )
+    plan_path = directory / "plan.json"
+    if plan_path.exists() or plan_path.is_symlink():
+        if plan_path.is_symlink() or not plan_path.is_file():
+            raise ProjectStorageError("Storage migration plan path is unsafe")
+        if load_json(plan_path) != plan:
+            raise ProjectStorageError("Storage migration plan ID collision")
+    else:
+        publish_immutable_json(plan_path, plan, ProjectStorageError)
+    return {"migration_plan": plan, "plan_path": str(plan_path)}
+
+
+def _layout_for_request(
+    request: dict[str, Any],
+    *,
+    schemas: SchemaRegistry | None = None,
+    allow_installed_policy_drift: bool = False,
+) -> ProjectStorageLayout:
+    value = request.get("project_root")
+    if value is None:
+        start_request = request.get("start_request")
+        if isinstance(start_request, dict):
+            value = start_request.get("project_root")
+            allow_installed_policy_drift = (
+                allow_installed_policy_drift
+                or start_request.get("entrypoint") == "refresh"
+            )
+        elif isinstance(request.get("start_request_path"), str):
+            loaded = load_json(request["start_request_path"])
+            if isinstance(loaded, dict):
+                value = loaded.get("project_root")
+                allow_installed_policy_drift = (
+                    allow_installed_policy_drift
+                    or loaded.get("entrypoint") == "refresh"
+                )
+    allow_installed_policy_drift = (
+        allow_installed_policy_drift or request.get("entrypoint") == "refresh"
+    )
+    if not isinstance(value, str):
+        raise InvalidRequestError(
+            "project_root is required; storage roots are derived from it"
+        )
+    return ProjectStorageLayout.resolve(
+        value,
+        schemas=schemas,
+        allow_installed_policy_drift=allow_installed_policy_drift,
+    )
+
+
+def _canonical_store(request: dict[str, Any], key: str) -> str:
+    layout = _layout_for_request(request)
+    supplied = request.get("store_root")
+    if supplied is not None and not isinstance(supplied, str):
+        raise InvalidRequestError("store_root must be a string or null")
+    return str(layout.require_explicit_root(key, supplied, create=True))
 
 
 def _expected_snapshot(request: dict[str, Any]) -> tuple[int, str]:
@@ -638,6 +783,8 @@ COMMANDS: dict[str, Command] = {
     "workflow-start": _command_workflow_start,
     "state-read": _command_state_read,
     "state-write": _command_state_write,
+    "storage-layout-resolve": _command_storage_layout_resolve,
+    "storage-layout-migration-plan": _command_storage_layout_migration_plan,
     "source-diff": _command_source_diff,
     "source-normalize": _command_source_normalize,
     "source-read": _command_source_read,

@@ -20,7 +20,9 @@ from .unreal_mcp import UnrealMcpGrantStore
 
 EXECUTION_REQUEST_SCHEMA = "forge-game://schemas/execution-request/1.0.0"
 RECORD_EXECUTION_REQUEST_SCHEMA = "forge-game://schemas/execution-request/1.1.0"
+LAYOUT_EXECUTION_REQUEST_SCHEMA = "forge-game://schemas/execution-request/1.2.0"
 TOOL_EXECUTION_REQUEST_SCHEMA = "forge-game://schemas/tool-execution-request/1.0.0"
+LAYOUT_TOOL_EXECUTION_REQUEST_SCHEMA = "forge-game://schemas/tool-execution-request/1.1.0"
 NO_REQUEST_COMMANDS = {
     "adapter-list",
     "doctor",
@@ -82,10 +84,16 @@ def evaluate_pre_tool(event: dict[str, Any]) -> dict[str, Any]:
                 if expected_schema not in {
                     EXECUTION_REQUEST_SCHEMA,
                     RECORD_EXECUTION_REQUEST_SCHEMA,
+                    LAYOUT_EXECUTION_REQUEST_SCHEMA,
                 }:
                     return _decision(False, "ExecutionRequest schema is unsupported")
             else:
-                expected_schema = TOOL_EXECUTION_REQUEST_SCHEMA
+                expected_schema = request.get("schema_id")
+                if expected_schema not in {
+                    TOOL_EXECUTION_REQUEST_SCHEMA,
+                    LAYOUT_TOOL_EXECUTION_REQUEST_SCHEMA,
+                }:
+                    return _decision(False, "ToolExecutionRequest schema is unsupported")
             schemas.validate(request, expected_schema)
             if envelope_content_hash(request) != request.get("content_hash"):
                 return _decision(False, "ExecutionRequest content_hash mismatch")

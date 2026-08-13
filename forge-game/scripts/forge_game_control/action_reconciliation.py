@@ -11,6 +11,7 @@ from .immutable_storage import fsync_directory, publish_immutable_json
 from .json_io import load_json
 from .run_lock import RunFileLock
 from .schemas import SchemaRegistry
+from .storage_layout import ProjectStorageLayout
 from .template_registry import bytes_hash
 
 
@@ -20,27 +21,35 @@ ACTION_RECONCILIATION_REQUEST_SCHEMA = (
 RECORD_ACTION_RECONCILIATION_REQUEST_SCHEMA = (
     "forge-game://schemas/action-reconciliation-request/1.1.0"
 )
+LAYOUT_ACTION_RECONCILIATION_REQUEST_SCHEMA = (
+    "forge-game://schemas/action-reconciliation-request/1.2.0"
+)
 ACTION_RECONCILIATION_RESULT_SCHEMA = (
     "forge-game://schemas/action-reconciliation-result/1.0.0"
 )
 ACTION_RESULT_SCHEMA = "forge-game://schemas/action-result/1.0.0"
 EXECUTION_REQUEST_SCHEMA = "forge-game://schemas/execution-request/1.0.0"
 RECORD_EXECUTION_REQUEST_SCHEMA = "forge-game://schemas/execution-request/1.1.0"
+LAYOUT_EXECUTION_REQUEST_SCHEMA = "forge-game://schemas/execution-request/1.2.0"
 TRANSACTION_EVENT_SCHEMA = "forge-game://schemas/transaction-event/1.0.0"
 
 
 class FilesystemActionReconciler:
     """Resolve an interrupted filesystem journal without producing a new effect."""
 
-    def __init__(self, schemas: SchemaRegistry):
+    def __init__(
+        self, schemas: SchemaRegistry, *, allow_legacy_custom_roots: bool = True
+    ):
         self.schemas = schemas
         self.filesystem = FilesystemAdapter(schemas)
+        self.allow_legacy_custom_roots = allow_legacy_custom_roots
 
     def reconcile(self, request: dict[str, Any]) -> dict[str, Any]:
         request_schema = request.get("schema_id")
         if request_schema not in {
             ACTION_RECONCILIATION_REQUEST_SCHEMA,
             RECORD_ACTION_RECONCILIATION_REQUEST_SCHEMA,
+            LAYOUT_ACTION_RECONCILIATION_REQUEST_SCHEMA,
         }:
             raise ActionExecutionError("Unsupported ActionReconciliationRequest schema")
         self.schemas.validate(request, request_schema)
@@ -50,10 +59,37 @@ class FilesystemActionReconciler:
         if execution_schema not in {
             EXECUTION_REQUEST_SCHEMA,
             RECORD_EXECUTION_REQUEST_SCHEMA,
+            LAYOUT_EXECUTION_REQUEST_SCHEMA,
         }:
             raise ActionExecutionError("Unsupported stored ExecutionRequest schema")
         self.schemas.validate(execution_request, execution_schema)
         self._verify_hash(execution_request, "ExecutionRequest")
+        if execution_schema == LAYOUT_EXECUTION_REQUEST_SCHEMA:
+            action_id = execution_request["adapter_plan"]["action_id"]
+            layout = ProjectStorageLayout.resolve(
+                execution_request["policy_context"]["project_root"],
+                schemas=self.schemas,
+                allow_installed_policy_drift=(
+                    action_id == "storage.layout.migrate"
+                    or (
+                        action_id == "project.files.apply"
+                        and execution_request["intent"]["workflow_id"] == "refresh"
+                    )
+                ),
+            )
+            layout.require_ref(execution_request["storage_layout_ref"])
+            layout.require_explicit_root(
+                "runtime_root", execution_request["runtime_root"], create=True
+            )
+            layout.require_explicit_root(
+                "approval_store",
+                execution_request["approval_store_root"],
+                create=True,
+            )
+        elif not self.allow_legacy_custom_roots:
+            raise ActionExecutionError(
+                "Legacy reconciliation requires the explicit compatibility/migration path"
+            )
 
         intent = execution_request["intent"]
         adapter_plan = execution_request["adapter_plan"]
@@ -155,6 +191,7 @@ class FilesystemActionReconciler:
                     if stored_schema not in {
                         EXECUTION_REQUEST_SCHEMA,
                         RECORD_EXECUTION_REQUEST_SCHEMA,
+                        LAYOUT_EXECUTION_REQUEST_SCHEMA,
                     }:
                         raise ActionExecutionError(
                             "Stored ExecutionRequest schema is unsupported"

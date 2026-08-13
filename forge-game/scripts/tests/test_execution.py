@@ -12,7 +12,7 @@ from forge_game_control.adapters import AdapterRegistry
 from forge_game_control.approval_store import ApprovalStore
 from forge_game_control.content_addressing import canonical_json_bytes, envelope_content_hash
 from forge_game_control.execution import ActionExecutor
-from forge_game_control.errors import ActionExecutionError
+from forge_game_control.errors import ActionExecutionError, ProjectStorageError
 from forge_game_control.filesystem_adapter import FilesystemAdapter
 from forge_game_control.json_io import load_json
 from forge_game_control.merge_drivers import MergeDriverRegistry
@@ -20,6 +20,10 @@ from forge_game_control.projection import ProjectionBuilder
 from forge_game_control.reconciliation import ReconciliationPlanner
 from forge_game_control.schemas import SchemaRegistry
 from forge_game_control.slice_model_migration import SliceModelMigration
+from forge_game_control.storage_layout import (
+    ProjectStorageLayout,
+    canonical_policy_document,
+)
 from forge_game_control.template_registry import TemplateRegistry
 from forge_game_control.workflows import WorkflowRegistry
 
@@ -230,6 +234,95 @@ class ActionExecutionTests(unittest.TestCase):
         descriptor = self.adapters.describe("network")
         self.assertEqual(health["status"], "unavailable")
         self.assertNotIn("execute", descriptor["operations"])
+
+    def test_storage_migration_copies_verifies_journals_and_reconciles(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            project = root / "project"
+            project.mkdir()
+            legacy = project / ".forge-game" / "artifacts"
+            legacy.mkdir(parents=True)
+            (legacy / "first.json").write_text('{"value":1}\n', encoding="utf-8")
+            (legacy / "nested").mkdir()
+            (legacy / "nested" / "second.txt").write_text(
+                "evidence\n", encoding="utf-8"
+            )
+            layout = ProjectStorageLayout.resolve(project, schemas=self.schemas)
+            migration = layout.migration_plan(
+                legacy_roots=None,
+                planned_at="2026-08-05T07:01:00Z",
+                schemas=self.schemas,
+            )
+            plan_request: dict[str, object] = {
+                "schema_id": "forge-game://schemas/adapter-plan-request/1.2.0",
+                "schema_version": "1.2.0",
+                "request_id": "plan-storage-migration",
+                "adapter_id": "filesystem",
+                "action_id": "storage.layout.migrate",
+                "project_root": str(project),
+                "migration_plan": migration,
+                "planned_at": "2026-08-05T07:02:00Z",
+                "content_hash": "sha256:" + "0" * 64,
+            }
+            seal(plan_request)
+            adapter_plan = self.filesystem.plan(plan_request)
+            self.assertEqual(adapter_plan["status"], "ready")
+            self.assertEqual(len(adapter_plan["targets"]), 2)
+            self.assertFalse(layout.path("artifact_store").exists())
+            self.assertTrue((legacy / "first.json").is_file())
+            stale_policy = deepcopy(canonical_policy_document())
+            stale_policy["paths"]["artifact_store"]["purpose"] = "legacy location"
+            seal(stale_policy)
+            layout.path("layout_policy").parent.mkdir(parents=True)
+            layout.path("layout_policy").write_bytes(canonical_json_bytes(stale_policy))
+            with self.assertRaisesRegex(ProjectStorageError, "drifts"):
+                ProjectStorageLayout.resolve(project, schemas=self.schemas)
+            failed_execution = self._execution_request(
+                project,
+                layout.path("runtime_root"),
+                plan_request,
+                adapter_plan,
+                "storage-migration-failed-001",
+            )
+            failed = self._executor(fail_after_targets=1).execute(failed_execution)
+            self.assertEqual(failed["result"]["outcome"], "failed")
+            self.assertEqual(failed["result"]["rollback_status"], "succeeded")
+            self.assertFalse(layout.path("artifact_store").exists())
+            rolled_back = self._reconcile(
+                failed_execution, "2026-08-05T07:02:45Z"
+            )
+            self.assertEqual(rolled_back["reconciliation"]["status"], "rolled_back")
+            execution = self._execution_request(
+                project,
+                layout.path("runtime_root"),
+                plan_request,
+                adapter_plan,
+                "storage-migration-001",
+            )
+            result = self._executor().execute(execution)
+            self.assertEqual(result["result"]["outcome"], "succeeded")
+            canonical = layout.path("artifact_store")
+            self.assertEqual(
+                (canonical / "first.json").read_text(encoding="utf-8"),
+                '{"value":1}\n',
+            )
+            self.assertEqual(
+                (canonical / "nested" / "second.txt").read_text(encoding="utf-8"),
+                "evidence\n",
+            )
+            self.assertTrue((legacy / "first.json").is_file())
+            self.assertTrue((legacy / "nested" / "second.txt").is_file())
+            self.assertTrue(
+                Path(result["transaction_root"]).is_relative_to(
+                    layout.path("execution_journals")
+                )
+            )
+            reconciled = self._reconcile(execution, "2026-08-05T07:03:00Z")
+            self.assertEqual(reconciled["reconciliation"]["status"], "succeeded")
+            self.assertEqual(
+                Path(reconciled["evidence_path"]).parent,
+                layout.path("reconciliation_evidence"),
+            )
 
     def test_executor_rejects_forged_approval_verification_context(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -443,13 +536,20 @@ class ActionExecutionTests(unittest.TestCase):
         record_request = execution["schema_id"] == (
             "forge-game://schemas/execution-request/1.1.0"
         )
+        layout_request = execution["schema_id"] == (
+            "forge-game://schemas/execution-request/1.2.0"
+        )
         request: dict[str, object] = {
             "schema_id": (
-                "forge-game://schemas/action-reconciliation-request/1.1.0"
+                "forge-game://schemas/action-reconciliation-request/1.2.0"
+                if layout_request
+                else "forge-game://schemas/action-reconciliation-request/1.1.0"
                 if record_request
                 else "forge-game://schemas/action-reconciliation-request/1.0.0"
             ),
-            "schema_version": "1.1.0" if record_request else "1.0.0",
+            "schema_version": (
+                "1.2.0" if layout_request else "1.1.0" if record_request else "1.0.0"
+            ),
             "request_id": "reconcile-" + execution["intent"]["idempotency_key"],
             "execution_request": execution,
             "reconciled_at": reconciled_at,
@@ -493,6 +593,7 @@ class ActionExecutionTests(unittest.TestCase):
         idempotency_key: str,
     ) -> dict[str, object]:
         action_id = adapter_plan["action_id"]
+        is_migration = action_id == "storage.layout.migrate"
         approval_id = f"approval-{idempotency_key}"
         intent = action_intent(
             intent_id=f"intent-{idempotency_key}",
@@ -512,10 +613,26 @@ class ActionExecutionTests(unittest.TestCase):
             ),
             approval_refs=[approval_id],
             idempotency_key=idempotency_key,
+            workflow_id="refresh" if is_migration else "bootstrap",
+            workflow_version="1.5.0" if is_migration else "1.4.0",
+            phase_id="refresh.apply" if is_migration else "bootstrap.apply",
+            action_class="runtime_mutation" if is_migration else "project_file_mutation",
         )
         context = policy_context(project.resolve(strict=True))
         context["project_policy"]["allowed_path_roots"] = ["."]
         context["approval_verdicts"] = {approval_id: "valid"}
+        if is_migration:
+            context["run_context"].update(
+                {
+                    "workflow_id": "refresh",
+                    "workflow_version": "1.5.0",
+                    "phase_id": "refresh.apply",
+                }
+            )
+            context["guard_facts"]["storage.layout.approved"] = {
+                "status": "satisfied",
+                "evidence_refs": [],
+            }
         if action_id == "project.records.publish":
             context["guard_facts"]["records.promotion_consistent"] = {
                 "status": "satisfied",
@@ -554,7 +671,7 @@ class ActionExecutionTests(unittest.TestCase):
             "approval_id": approval_id,
             "run_id": intent["run_id"],
             "workflow_id": intent["workflow_id"],
-            "gate_id": "bootstrap.apply",
+            "gate_id": "refresh.apply" if is_migration else "bootstrap.apply",
             "phase_id": intent["phase_id"],
             "decision": "approve",
             "scope": {
@@ -580,14 +697,18 @@ class ActionExecutionTests(unittest.TestCase):
             "content_hash": "sha256:" + "0" * 64,
         }
         seal(approval)
-        approval_store_root = runtime.parent / "approvals"
+        approval_store_root = (
+            project / ".forge-game/runtime/approvals"
+            if is_migration
+            else runtime.parent / "approvals"
+        )
         ApprovalStore(self.schemas, approval_store_root).publish(approval)
         approval_context: dict[str, object] = {
             "schema_id": "forge-game://schemas/approval-verification-context/1.0.0",
             "schema_version": "1.0.0",
             "run_id": intent["run_id"],
             "workflow_id": intent["workflow_id"],
-            "gate_id": "bootstrap.apply",
+            "gate_id": "refresh.apply" if is_migration else "bootstrap.apply",
             "phase_id": intent["phase_id"],
             "required_decision": "approve",
             "project_state_revision": context["run_context"]["project_state_revision"],
@@ -601,13 +722,20 @@ class ActionExecutionTests(unittest.TestCase):
         record_request = adapter_plan["schema_id"] == (
             "forge-game://schemas/adapter-plan/1.1.0"
         )
+        layout_request = adapter_plan["schema_id"] == (
+            "forge-game://schemas/adapter-plan/1.2.0"
+        )
         request: dict[str, object] = {
             "schema_id": (
-                "forge-game://schemas/execution-request/1.1.0"
+                "forge-game://schemas/execution-request/1.2.0"
+                if layout_request
+                else "forge-game://schemas/execution-request/1.1.0"
                 if record_request
                 else "forge-game://schemas/execution-request/1.0.0"
             ),
-            "schema_version": "1.1.0" if record_request else "1.0.0",
+            "schema_version": (
+                "1.2.0" if layout_request else "1.1.0" if record_request else "1.0.0"
+            ),
             "request_id": f"execute-{idempotency_key}",
             "intent": intent,
             "policy_context": context,
@@ -619,6 +747,12 @@ class ActionExecutionTests(unittest.TestCase):
             "requested_at": "2026-08-05T10:02:30+03:00",
             "content_hash": "sha256:" + "0" * 64,
         }
+        if layout_request:
+            request["storage_layout_ref"] = ProjectStorageLayout.resolve(
+                project,
+                schemas=self.schemas,
+                allow_installed_policy_drift=is_migration,
+            ).ref()
         return seal(request)
 
     def _executor(self, *, fail_after_targets: int | None = None) -> ActionExecutor:

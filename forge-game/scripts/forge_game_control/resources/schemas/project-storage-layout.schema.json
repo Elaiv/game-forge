@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "forge-game://schemas/project-storage-layout/1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_id", "schema_version", "layout_id", "layout_revision", "project_root", "policy_hash", "paths", "external_source_policy", "content_hash"],
+  "properties": {
+    "schema_id": {"const": "forge-game://schemas/project-storage-layout/1.0.0"},
+    "schema_version": {"const": "1.0.0"},
+    "layout_id": {"const": "forge-game-project-storage"},
+    "layout_revision": {"const": 1},
+    "project_root": {"type": "string", "pattern": "^/"},
+    "policy_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+    "paths": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {"type": "string", "pattern": "^/"}
+    },
+    "external_source_policy": {"$ref": "forge-game://schemas/storage-layout-policy/1.0.0#/$defs/externalPolicy"},
+    "content_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+  },
+  "$defs": {
+    "layoutRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["layout_id", "layout_revision", "project_root", "policy_hash", "content_hash"],
+      "properties": {
+        "layout_id": {"const": "forge-game-project-storage"},
+        "layout_revision": {"const": 1},
+        "project_root": {"type": "string", "pattern": "^/"},
+        "policy_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"},
+        "content_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+      }
+    }
+  }
+}

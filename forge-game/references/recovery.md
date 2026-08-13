@@ -2,7 +2,7 @@
 
 Recover from persisted documents, never from assumed conversational state. Read the current checkpoint with `workflow-resume`; do not reconstruct an invocation or gate from memory.
 
-1. Run package diagnostics and validate the current project/run documents.
+1. Resolve the same sealed project storage layout, run package diagnostics, and validate the current project/run documents. A changed clone path or layout hash invalidates an in-progress local run.
 2. Verify the snapshot revision chain and content hashes.
 3. Recompute the current phase from the selected workflow and last accepted checkpoint.
 4. Revalidate approvals against current subjects, revisions, targets, ownership, and capabilities.

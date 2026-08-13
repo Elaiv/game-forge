@@ -42,13 +42,19 @@ class AdapterRegistry:
         AdapterDefinition(
             "filesystem",
             ("filesystem.write",),
-            ("project.files.apply", "project.patch.apply", "project.records.publish"),
+            (
+                "project.files.apply",
+                "project.patch.apply",
+                "project.records.publish",
+                "storage.layout.migrate",
+            ),
             ("describe", "health", "plan", "execute", "reconcile"),
             "healthy",
             executable_action_ids=(
                 "project.files.apply",
                 "project.patch.apply",
                 "project.records.publish",
+                "storage.layout.migrate",
             ),
         ),
         AdapterDefinition(

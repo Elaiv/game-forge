@@ -10,7 +10,10 @@ from .action_catalog import ActionCatalog
 from .adapters import AdapterRegistry
 from .engineering_rules import EngineeringRuleCatalog
 from .merge_drivers import MergeDriverRegistry
+from .errors import ProjectStorageError
+from .json_io import load_json
 from .schemas import SchemaRegistry
+from .storage_layout import ProjectStorageLayout, canonical_policy_document
 from .template_registry import TemplateRegistry
 from .workflows import WorkflowRegistry
 
@@ -24,6 +27,7 @@ def validate_package() -> dict[str, Any]:
     adapters = AdapterRegistry(schemas)
     engineering_rules = EngineeringRuleCatalog(schemas)
     workflow_readiness = _workflow_readiness(workflows, adapters)
+    storage_policy = _validate_storage_assets(schemas, templates)
     return {
         "package_version": __version__,
         "schema_count": len(schemas.ids()),
@@ -50,6 +54,8 @@ def validate_package() -> dict[str, Any]:
         "engineering_rule_catalog_hash": engineering_rules.catalog_hash,
         "engineering_rules_document_hash": engineering_rules.rules_document_hash,
         "engineering_rule_count": len(engineering_rules.ids),
+        "storage_layout_policy_version": storage_policy["policy_version"],
+        "storage_layout_policy_hash": storage_policy["content_hash"],
     }
 
 
@@ -100,7 +106,12 @@ def _workflow_readiness(
     return reports
 
 
-def doctor() -> dict[str, Any]:
+def doctor(
+    *,
+    project_root: str | None = None,
+    entrypoint: str | None = None,
+    legacy_roots: dict[str, str] | None = None,
+) -> dict[str, Any]:
     result = validate_package()
     result.update(
         {
@@ -113,4 +124,77 @@ def doctor() -> dict[str, Any]:
             },
         }
     )
+    if project_root is None:
+        result["project_storage"] = {
+            "readiness": "project_root_required",
+            "blockers": [
+                {
+                    "code": "project_root.required",
+                    "message": "Pass canonical project_root for storage diagnostics",
+                }
+            ],
+        }
+    else:
+        layout = ProjectStorageLayout.resolve(
+            project_root,
+            schemas=SchemaRegistry(),
+            allow_installed_policy_drift=True,
+        )
+        result["project_storage"] = layout.diagnose(
+            entrypoint=entrypoint,
+            legacy_roots=legacy_roots,
+        )
     return result
+
+
+def _validate_storage_assets(
+    schemas: SchemaRegistry,
+    templates: TemplateRegistry,
+) -> dict[str, Any]:
+    expected = canonical_policy_document()
+    schemas.validate(expected)
+    source = templates.asset_root / "templates" / "storage-layout.json.tmpl"
+    installed = load_json(source)
+    if installed != expected:
+        raise ProjectStorageError(
+            "Project-local storage layout template differs from runtime policy"
+        )
+    gitignore = (
+        templates.asset_root / "templates" / "gitignore.lines.tmpl"
+    ).read_text(encoding="utf-8").splitlines()
+    required_ignored = {
+        ".forge-game/runtime/",
+        ".forge-game/worktrees/",
+        ".forge-game/runtime-env/",
+        ".forge-game/runtime-env.failed-*/",
+        ".forge-game/tmp/",
+    }
+    if not required_ignored.issubset(set(gitignore)):
+        raise ProjectStorageError(
+            "Generated .gitignore does not cover every canonical operational root"
+        )
+    forbidden = {
+        ".forge-game/architecture/",
+        ".forge-game/backlog/",
+        ".forge-game/traceability/",
+        ".forge-game/manifests/",
+        ".forge-game/baselines/",
+        "docs/forge-game/",
+    }
+    if forbidden.intersection(gitignore):
+        raise ProjectStorageError(
+            "Generated .gitignore hides canonical tracked storage"
+        )
+    docs = (
+        templates.asset_root / "templates" / "docs-index.md.tmpl"
+    ).read_text(encoding="utf-8")
+    for statement in (
+        ".forge-game/runtime/artifacts/",
+        "docs/forge-game/artifacts/",
+        ".forge-game/runtime/source-sets/",
+    ):
+        if statement not in docs:
+            raise ProjectStorageError(
+                "Generated docs index is inconsistent with canonical storage layout"
+            )
+    return expected

@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "forge-game://schemas/storage-layout-policy/1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_id", "schema_version", "policy_id", "policy_version", "paths", "external_source_policy", "content_hash"],
+  "properties": {
+    "schema_id": {"const": "forge-game://schemas/storage-layout-policy/1.0.0"},
+    "schema_version": {"const": "1.0.0"},
+    "policy_id": {"const": "forge-game-project-storage"},
+    "policy_version": {"const": "1.0.0"},
+    "paths": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {"$ref": "#/$defs/pathPolicy"}
+    },
+    "external_source_policy": {"$ref": "#/$defs/externalPolicy"},
+    "content_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
+  },
+  "$defs": {
+    "pathPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["relative_path", "zone", "git_policy", "kind", "purpose"],
+      "properties": {
+        "relative_path": {"type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\)[^\\u0000]+$"},
+        "zone": {"enum": ["durable_machine", "accepted_artifacts", "operational_runtime"]},
+        "git_policy": {"enum": ["tracked", "ignored"]},
+        "kind": {"enum": ["file", "directory"]},
+        "purpose": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}
+      }
+    },
+    "externalPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["zone", "absolute", "canonical", "symlink_free", "read_only"],
+      "properties": {
+        "zone": {"const": "external_read_only_sources"},
+        "absolute": {"const": true},
+        "canonical": {"const": true},
+        "symlink_free": {"const": true},
+        "read_only": {"const": true}
+      }
+    }
+  }
+}

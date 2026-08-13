@@ -10,13 +10,16 @@ from .immutable_storage import fsync_directory, publish_immutable_json
 from .json_io import load_json
 from .run_lock import RunFileLock
 from .schemas import SchemaRegistry
+from .storage_layout import ProjectStorageLayout
 from .tool_adapters import ToolPlanBuilder
 from .unreal_mcp import GRANT_SCHEMA, fingerprint_unreal_targets
 
 
 REQUEST_SCHEMA = "forge-game://schemas/tool-reconciliation-request/1.0.0"
+LAYOUT_REQUEST_SCHEMA = "forge-game://schemas/tool-reconciliation-request/1.1.0"
 RESULT_SCHEMA = "forge-game://schemas/tool-reconciliation-result/1.0.0"
 EXECUTION_SCHEMA = "forge-game://schemas/tool-execution-request/1.0.0"
+LAYOUT_EXECUTION_SCHEMA = "forge-game://schemas/tool-execution-request/1.1.0"
 ACTION_RESULT_SCHEMA = "forge-game://schemas/action-result/1.0.0"
 EVENT_SCHEMA = "forge-game://schemas/tool-operation-event/1.0.0"
 
@@ -24,16 +27,43 @@ EVENT_SCHEMA = "forge-game://schemas/tool-operation-event/1.0.0"
 class ToolActionReconciler:
     """Classify an interrupted Git/Build/Test journal without repairing it."""
 
-    def __init__(self, schemas: SchemaRegistry):
+    def __init__(
+        self, schemas: SchemaRegistry, *, allow_legacy_custom_roots: bool = True
+    ):
         self.schemas = schemas
         self.plans = ToolPlanBuilder(schemas)
+        self.allow_legacy_custom_roots = allow_legacy_custom_roots
 
     def reconcile(self, request: dict[str, Any]) -> dict[str, Any]:
-        self.schemas.validate(request, REQUEST_SCHEMA)
+        request_schema = request.get("schema_id")
+        if request_schema not in {REQUEST_SCHEMA, LAYOUT_REQUEST_SCHEMA}:
+            raise ActionExecutionError("Unsupported ToolReconciliationRequest schema")
+        self.schemas.validate(request, request_schema)
         request_hash = self._verify_hash(request, "ToolReconciliationRequest")
         execution_request = request["execution_request"]
-        self.schemas.validate(execution_request, EXECUTION_SCHEMA)
+        execution_schema = execution_request.get("schema_id")
+        if execution_schema not in {EXECUTION_SCHEMA, LAYOUT_EXECUTION_SCHEMA}:
+            raise ActionExecutionError("Unsupported ToolExecutionRequest schema")
+        self.schemas.validate(execution_request, execution_schema)
         self._verify_hash(execution_request, "ToolExecutionRequest")
+        if execution_schema == LAYOUT_EXECUTION_SCHEMA:
+            layout = ProjectStorageLayout.resolve(
+                execution_request["policy_context"]["project_root"],
+                schemas=self.schemas,
+            )
+            layout.require_ref(execution_request["storage_layout_ref"])
+            layout.require_explicit_root(
+                "runtime_root", execution_request["runtime_root"], create=True
+            )
+            layout.require_explicit_root(
+                "approval_store",
+                execution_request["approval_store_root"],
+                create=True,
+            )
+        elif not self.allow_legacy_custom_roots:
+            raise ActionExecutionError(
+                "Legacy tool reconciliation requires the explicit compatibility/migration path"
+            )
         intent = execution_request["intent"]
         plan = execution_request["adapter_plan"]
         if plan["status"] != "ready" or plan["adapter_id"] not in {
@@ -263,7 +293,15 @@ class ToolActionReconciler:
                 stored = load_json(stored_path)
                 if not isinstance(stored, dict):
                     raise ActionExecutionError("Stored ToolExecutionRequest is invalid")
-                self.schemas.validate(stored, EXECUTION_SCHEMA)
+                stored_schema = stored.get("schema_id")
+                if stored_schema not in {
+                    EXECUTION_SCHEMA,
+                    LAYOUT_EXECUTION_SCHEMA,
+                }:
+                    raise ActionExecutionError(
+                        "Stored ToolExecutionRequest schema is unsupported"
+                    )
+                self.schemas.validate(stored, stored_schema)
                 self._verify_hash(stored, "Stored ToolExecutionRequest")
                 if stored != execution_request:
                     raise ActionExecutionError(

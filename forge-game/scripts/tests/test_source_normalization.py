@@ -164,7 +164,8 @@ class SourceNormalizationTests(unittest.TestCase):
             request.write_text(
                 json.dumps(
                     {
-                        "store_root": str(root / "sources"),
+                        "project_root": str(root),
+                        "store_root": str(root / ".forge-game/runtime/source-sets"),
                         "source_set_id": "cli-input",
                         "sources": [
                             {"source_id": "gdd", "role": "gdd", "path": str(source)}

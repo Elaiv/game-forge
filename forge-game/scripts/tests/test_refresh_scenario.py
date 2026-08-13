@@ -123,7 +123,7 @@ class RefreshScenarioTests(unittest.TestCase):
                     "schema_version": "1.1.0",
                     "entrypoint": "refresh",
                     "project_root": str(project),
-                    "inputs": {"target_forge_game_version": "0.16.0"},
+                    "inputs": {"target_forge_game_version": "0.17.0"},
                 },
                 project_state_base={
                     "revision": project_state_ref.revision,

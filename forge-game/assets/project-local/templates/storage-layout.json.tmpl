@@ -1,0 +1,41 @@
+{
+  "schema_id": "forge-game://schemas/storage-layout-policy/1.0.0",
+  "schema_version": "1.0.0",
+  "policy_id": "forge-game-project-storage",
+  "policy_version": "1.0.0",
+  "paths": {
+    "architecture_model": {"relative_path": ".forge-game/architecture/model.json", "zone": "durable_machine", "git_policy": "tracked", "kind": "file", "purpose": "ArchitectureModel project record"},
+    "module_catalog": {"relative_path": ".forge-game/architecture/modules.json", "zone": "durable_machine", "git_policy": "tracked", "kind": "file", "purpose": "ModuleCatalog project record"},
+    "slice_backlog": {"relative_path": ".forge-game/backlog/slices.json", "zone": "durable_machine", "git_policy": "tracked", "kind": "file", "purpose": "SliceBacklog project record"},
+    "traceability_graph": {"relative_path": ".forge-game/traceability/graph.json", "zone": "durable_machine", "git_policy": "tracked", "kind": "file", "purpose": "TraceabilityGraph project record"},
+    "project_state": {"relative_path": ".forge-game/project-state.json", "zone": "durable_machine", "git_policy": "tracked", "kind": "file", "purpose": "ProjectState project record"},
+    "layout_policy": {"relative_path": ".forge-game/manifests/storage-layout.json", "zone": "durable_machine", "git_policy": "tracked", "kind": "file", "purpose": "project-local relative storage policy"},
+    "ownership_manifest": {"relative_path": ".forge-game/manifests/ownership.json", "zone": "durable_machine", "git_policy": "tracked", "kind": "file", "purpose": "projection ownership manifest"},
+    "projection_manifest": {"relative_path": ".forge-game/manifests/projection.json", "zone": "durable_machine", "git_policy": "tracked", "kind": "file", "purpose": "last-applied projection manifest"},
+    "commands_manifest": {"relative_path": ".forge-game/manifests/commands.json", "zone": "durable_machine", "git_policy": "tracked", "kind": "file", "purpose": "canonical command manifest"},
+    "managed_baselines": {"relative_path": ".forge-game/baselines", "zone": "durable_machine", "git_policy": "tracked", "kind": "directory", "purpose": "content-addressed managed-file baselines"},
+    "accepted_artifacts": {"relative_path": "docs/forge-game/artifacts", "zone": "accepted_artifacts", "git_policy": "tracked", "kind": "directory", "purpose": "accepted human-readable artifact projections"},
+    "accepted_index": {"relative_path": "docs/forge-game/index.md", "zone": "accepted_artifacts", "git_policy": "tracked", "kind": "file", "purpose": "generated accepted-artifact index"},
+    "runtime_root": {"relative_path": ".forge-game/runtime", "zone": "operational_runtime", "git_policy": "ignored", "kind": "directory", "purpose": "local operational root"},
+    "artifact_store": {"relative_path": ".forge-game/runtime/artifacts", "zone": "operational_runtime", "git_policy": "ignored", "kind": "directory", "purpose": "immutable active-run Artifact bundles"},
+    "approval_store": {"relative_path": ".forge-game/runtime/approvals", "zone": "operational_runtime", "git_policy": "ignored", "kind": "directory", "purpose": "immutable approvals and per-approval lifecycle events"},
+    "normalized_source_store": {"relative_path": ".forge-game/runtime/source-sets", "zone": "operational_runtime", "git_policy": "ignored", "kind": "directory", "purpose": "immutable normalized source-set revisions"},
+    "workflow_store": {"relative_path": ".forge-game/runtime/workflows", "zone": "operational_runtime", "git_policy": "ignored", "kind": "directory", "purpose": "run snapshots and immutable workflow journals"},
+    "execution_journals": {"relative_path": ".forge-game/runtime/executions", "zone": "operational_runtime", "git_policy": "ignored", "kind": "directory", "purpose": "action and tool execution journals"},
+    "reconciliation_evidence": {"relative_path": ".forge-game/runtime/reconciliations", "zone": "operational_runtime", "git_policy": "ignored", "kind": "directory", "purpose": "read-only action and tool reconciliation evidence"},
+    "projection_staging": {"relative_path": ".forge-game/runtime/staging/projections", "zone": "operational_runtime", "git_policy": "ignored", "kind": "directory", "purpose": "immutable desired projection bundles"},
+    "reconciliation_staging": {"relative_path": ".forge-game/runtime/staging/reconciliations", "zone": "operational_runtime", "git_policy": "ignored", "kind": "directory", "purpose": "immutable reconciliation plan bundles"},
+    "migration_staging": {"relative_path": ".forge-game/runtime/staging/migrations", "zone": "operational_runtime", "git_policy": "ignored", "kind": "directory", "purpose": "immutable storage migration plans"},
+    "temporary_files": {"relative_path": ".forge-game/tmp", "zone": "operational_runtime", "git_policy": "ignored", "kind": "directory", "purpose": "disposable project-local temporary data"},
+    "worktrees": {"relative_path": ".forge-game/worktrees", "zone": "operational_runtime", "git_policy": "ignored", "kind": "directory", "purpose": "registered feature worktrees"},
+    "runtime_environment": {"relative_path": ".forge-game/runtime-env", "zone": "operational_runtime", "git_policy": "ignored", "kind": "directory", "purpose": "project-local pinned Python runtime"}
+  },
+  "external_source_policy": {
+    "zone": "external_read_only_sources",
+    "absolute": true,
+    "canonical": true,
+    "symlink_free": true,
+    "read_only": true
+  },
+  "content_hash": "sha256:68b923df5a0d55214988cabecd187c1e08d53c17c429cb7ac4e195d760dc0c9b"
+}

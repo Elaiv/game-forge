@@ -2,11 +2,11 @@
 
 Use Bootstrap only to establish forge-game governance around one Unreal project from a pinned GDD and Roadmap baseline.
 
-1. Discover the repository, Unreal version, toolchain, Git/LFS/CI state, existing conventions, and brownfield ownership boundaries without mutation.
+1. Resolve the concrete Unreal repository root and canonical storage layout; discover Unreal version, toolchain, Git/LFS/CI state, existing conventions, and brownfield ownership boundaries without mutation.
 2. Normalize and pin the source baseline with `source-normalize`; stop on unavailable text, tampering, or ambiguous source identity. Extract requirements only from validated normalized fragments.
 3. Produce architecture and backlog plans with stable IDs and traceability to source requirements.
 4. Obtain independent architecture review and the declared human architecture gate.
-5. Render the desired project-local projection, then build an ownership-aware reconciliation plan. Classify every target as `generated`, `managed`, or `user-owned`; keep unknown existing targets user-owned.
+5. Render the desired project-local projection, including the storage policy and Git ignore rules, under canonical projection staging; then build an ownership-aware reconciliation plan. Classify every target as `generated`, `managed`, or `user-owned`; keep unknown existing targets user-owned.
 6. Show the exact apply plan and obtain the declared apply gate.
 7. Apply only the approved projection, publish the approved complete ArchitectureModel/ModuleCatalog/SliceBacklog/TraceabilityGraph/ProjectState as one sealed `ProjectRecordSet`, configure Git, verify the resulting project-local footprint, and request final acceptance.
 
