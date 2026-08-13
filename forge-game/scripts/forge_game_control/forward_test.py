@@ -12,8 +12,9 @@ from .adapters import AdapterRegistry
 from .content_addressing import content_hash, envelope_content_hash
 from .engineering_rules import CURRENT_PROJECT_STATE_SCHEMA_ID, EngineeringRuleCatalog
 from .errors import InvalidRequestError
-from .json_io import load_json, loads_json
+from .json_io import load_json
 from .package_validation import _workflow_readiness
+from .runtime_environment import validate_project_runtime
 from .schemas import SchemaRegistry
 from .storage_layout import ProjectStorageLayout
 from .template_registry import TemplateRegistry, validate_target_path
@@ -65,7 +66,7 @@ class ForwardTestPreflight:
         uproject_path: str | None = None
         if root is not None:
             uproject_path = self._uproject(root, checks)
-            self._git_baseline(root, checks)
+            self._git_baseline(root, workflow_id, checks)
             self._storage_layout(root, workflow_id, checks)
         self._workflow_executor_readiness(workflow_id, checks)
 
@@ -245,7 +246,12 @@ class ForwardTestPreflight:
         )
         return str(projects[0])
 
-    def _git_baseline(self, root: Path, checks: list[dict[str, Any]]) -> None:
+    def _git_baseline(
+        self,
+        root: Path,
+        workflow_id: str,
+        checks: list[dict[str, Any]],
+    ) -> None:
         git = shutil.which("git")
         if git is None:
             self._add(checks, "git.baseline", "fail", "Git is unavailable.", [])
@@ -253,9 +259,60 @@ class ForwardTestPreflight:
         top_code, top = self._run([git, "rev-parse", "--show-toplevel"], root)
         head_code, head = self._run([git, "rev-parse", "--verify", "HEAD"], root)
         branch_code, branch = self._run([git, "branch", "--show-current"], root)
-        status_code, status = self._run(
-            [git, "status", "--porcelain=v1", "--untracked-files=all"], root
-        )
+        status_arguments = [git, "status", "--porcelain=v1", "--untracked-files=all"]
+        if workflow_id == "bootstrap":
+            try:
+                layout = ProjectStorageLayout.resolve(root, schemas=self.schemas)
+                runtime = layout.path("runtime_environment")
+            except Exception as exc:
+                runtime = None
+                self._add(
+                    checks,
+                    "project.runtime",
+                    "fail",
+                    "Bootstrap runtime path could not be resolved safely.",
+                    ["runtime.path_resolution_failed", str(exc)],
+                )
+            if runtime is not None and (runtime.exists() or runtime.is_symlink()):
+                validation = validate_project_runtime(
+                    root,
+                    runtime,
+                    expected_package_version=__version__,
+                )
+                relative = runtime.relative_to(root).as_posix()
+                tracked_code, tracked = self._run(
+                    [git, "ls-files", "--", relative], root
+                )
+                if validation.ok and tracked_code == 0 and not tracked:
+                    status_arguments.extend(
+                        [
+                            "--",
+                            ".",
+                            f":(exclude){relative}",
+                            f":(exclude){relative}/**",
+                        ]
+                    )
+                    self._add(
+                        checks,
+                        "project.runtime",
+                        "pass",
+                        "Validated canonical runtime is excluded from Bootstrap Git baseline only.",
+                        list(validation.evidence),
+                    )
+                else:
+                    evidence = [validation.code, *validation.evidence]
+                    if tracked_code != 0:
+                        evidence.append("git_tracked_probe=failed")
+                    elif tracked:
+                        evidence.append("git_tracked_files=present")
+                    self._add(
+                        checks,
+                        "project.runtime",
+                        "fail",
+                        "Existing Bootstrap runtime is invalid, unsafe, or tracked and cannot be excluded.",
+                        evidence,
+                    )
+        status_code, status = self._run(status_arguments, root)
         if (
             top_code != 0
             or Path(top).resolve(strict=False) != root
@@ -505,36 +562,30 @@ class ForwardTestPreflight:
         )
 
     def _project_runtime(self, root: Path, checks: list[dict[str, Any]]) -> None:
-        relative = (
-            Path(".forge-game/runtime-env/Scripts/forge-game-control.exe")
-            if os.name == "nt"
-            else Path(".forge-game/runtime-env/bin/forge-game-control")
-        )
-        control = root / relative
-        if control.is_symlink() or not control.is_file() or not os.access(control, os.X_OK):
+        try:
+            layout = ProjectStorageLayout.resolve(root, schemas=self.schemas)
+            runtime = layout.path("runtime_environment")
+        except Exception as exc:
             self._add(
                 checks,
                 "project.runtime",
                 "fail",
-                "Pinned project-local forge-game runtime is unavailable.",
-                [str(relative)],
+                "Pinned project-local runtime path could not be resolved safely.",
+                [type(exc).__name__],
             )
             return
-        code, output = self._run([str(control), "validate-package"], root)
-        try:
-            response = loads_json(output)
-            version = response["data"]["package_version"]
-            valid = response.get("ok") is True and version == __version__
-        except Exception:
-            valid = False
-            version = "<invalid>"
-        if code != 0 or not valid:
+        validation = validate_project_runtime(
+            root,
+            runtime,
+            expected_package_version=__version__,
+        )
+        if not validation.ok:
             self._add(
                 checks,
                 "project.runtime",
                 "fail",
                 "Project-local runtime is unhealthy or has the wrong package version.",
-                [f"expected={__version__}", f"actual={version}"],
+                [validation.code, *validation.evidence],
             )
             return
         self._add(
@@ -542,7 +593,7 @@ class ForwardTestPreflight:
             "project.runtime",
             "pass",
             "Project-local runtime matches the forward-test package.",
-            [f"package_version={version}"],
+            list(validation.evidence),
         )
 
     def _host_config(self, root: Path, checks: list[dict[str, Any]]) -> None:

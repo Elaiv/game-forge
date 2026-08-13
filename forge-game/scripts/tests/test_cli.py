@@ -16,6 +16,7 @@ from forge_game_control.storage_layout import canonical_policy_document
 from forge_game_control.template_registry import TemplateRegistry
 from forge_game_control.workflows import WorkflowRegistry
 from forge_game_control import __version__
+from runtime_fixture import create_project_runtime
 
 
 class CliTests(unittest.TestCase):
@@ -120,6 +121,59 @@ class CliTests(unittest.TestCase):
         self.assertRegex(report["content_hash"], r"^sha256:[0-9a-f]{64}$")
 
     @unittest.skipUnless(shutil.which("git"), "Git is required for preflight")
+    def test_forward_test_preflight_accepts_bootstrap_after_project_runtime_setup(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            temporary = Path(directory).resolve(strict=True)
+            root = temporary / "TinyGame"
+            root.mkdir()
+            (root / "TinyGame.uproject").write_text(
+                json.dumps({"FileVersion": 3, "EngineAssociation": "5.7"}),
+                encoding="utf-8",
+            )
+            gdd = root / "GDD.md"
+            roadmap = root / "Roadmap.md"
+            gdd.write_text("# Tiny Game\n", encoding="utf-8")
+            roadmap.write_text("# Roadmap\n", encoding="utf-8")
+            subprocess.run(["git", "-C", str(root), "init"], check=True, capture_output=True)
+            subprocess.run(
+                ["git", "-C", str(root), "config", "user.email", "forge-game@example.invalid"],
+                check=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(root), "config", "user.name", "Forge Game Test"],
+                check=True,
+            )
+            subprocess.run(["git", "-C", str(root), "add", "."], check=True)
+            subprocess.run(
+                ["git", "-C", str(root), "commit", "-m", "Initial"],
+                check=True,
+                capture_output=True,
+            )
+            create_project_runtime(root)
+            request = temporary / "preflight.json"
+            request.write_text(
+                json.dumps(
+                    {
+                        "project_root": str(root),
+                        "workflow_id": "bootstrap",
+                        "gdd_path": str(gdd),
+                        "roadmap_path": str(roadmap),
+                        "checked_at": "2026-08-09T12:00:00Z",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            exit_code, response, stderr = self.invoke(
+                ["forward-test-preflight", "--request", str(request)]
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(stderr, "")
+        report = response["data"]["report"]
+        self.assertEqual(report["status"], "ready", report)
+        self.assertEqual(report["blocking_check_ids"], [])
+
+    @unittest.skipUnless(shutil.which("git"), "Git is required for preflight")
     def test_forward_test_preflight_accepts_bootstrapped_text_slice_fixture(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             temporary = Path(directory).resolve(strict=True)
@@ -153,21 +207,7 @@ class CliTests(unittest.TestCase):
                 'url = "http://127.0.0.1:8000/mcp"\n',
                 encoding="utf-8",
             )
-            runtime = (
-                root
-                / ".forge-game"
-                / "runtime-env"
-                / "bin"
-                / "forge-game-control"
-            )
-            runtime.parent.mkdir(parents=True)
-            runtime.write_text(
-                "#!/usr/bin/env python3\n"
-                "import json\n"
-                f"print(json.dumps({{'ok': True, 'data': {{'package_version': '{__version__}'}}}}))\n",
-                encoding="utf-8",
-            )
-            runtime.chmod(0o755)
+            create_project_runtime(root)
             command = root / "pilot-check.sh"
             command.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
             command.chmod(0o755)
@@ -273,6 +313,10 @@ class CliTests(unittest.TestCase):
             exit_code, response, stderr = self.invoke(
                 ["forward-test-preflight", "--request", str(request)]
             )
+            (root / "foreign-untracked.txt").write_text("unexpected\n", encoding="utf-8")
+            dirty_exit_code, dirty_response, dirty_stderr = self.invoke(
+                ["forward-test-preflight", "--request", str(request)]
+            )
 
         self.assertEqual(exit_code, 0)
         self.assertEqual(stderr, "")
@@ -280,6 +324,11 @@ class CliTests(unittest.TestCase):
         self.assertEqual(report["status"], "ready", report)
         self.assertIn("workflow.optional_actions", report["warning_check_ids"])
         self.assertEqual(report["blocking_check_ids"], [])
+        self.assertEqual(dirty_exit_code, 0)
+        self.assertEqual(dirty_stderr, "")
+        dirty_report = dirty_response["data"]["report"]
+        self.assertEqual(dirty_report["status"], "blocked")
+        self.assertIn("git.baseline", dirty_report["blocking_check_ids"])
 
     def test_engineering_status_binds_catalog_and_repository_snapshot(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

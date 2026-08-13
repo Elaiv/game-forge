@@ -11,6 +11,9 @@ import sys
 import uuid
 from pathlib import Path
 
+from forge_game_control import __version__
+from forge_game_control.runtime_environment import validate_project_runtime
+
 
 def _emit(ok: bool, **data: object) -> int:
     payload = {"ok": ok, "command": "setup-runtime"}
@@ -21,10 +24,6 @@ def _emit(ok: bool, **data: object) -> int:
 
 def _runtime_python(root: Path) -> Path:
     return root / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
-
-
-def _runtime_control(root: Path) -> Path:
-    return root / ("Scripts/forge-game-control.exe" if os.name == "nt" else "bin/forge-game-control")
 
 
 def _run(argv: list[str], *, timeout: int) -> subprocess.CompletedProcess[str]:
@@ -40,34 +39,14 @@ def _run(argv: list[str], *, timeout: int) -> subprocess.CompletedProcess[str]:
 
 
 def _verify(runtime_root: Path) -> tuple[bool, str]:
-    python = _runtime_python(runtime_root)
-    if not python.is_file():
-        return False, "runtime interpreter is unavailable"
-    try:
-        resolved_python = python.resolve(strict=True)
-    except OSError:
-        return False, "runtime interpreter target is unavailable"
-    if not resolved_python.is_file():
-        return False, "runtime interpreter target is invalid"
-    control = _runtime_control(runtime_root)
-    if control.is_symlink() or not control.is_file():
-        return False, "runtime control entrypoint is unavailable"
-    result = _run(
-        [str(control), "validate-package"],
-        timeout=60,
+    validation = validate_project_runtime(
+        runtime_root.parents[1],
+        runtime_root,
+        expected_package_version=__version__,
     )
-    if result.returncode != 0:
-        return False, "runtime package validation failed"
-    try:
-        response = json.loads(result.stdout)
-    except json.JSONDecodeError:
-        return False, "runtime package returned invalid JSON"
-    if not isinstance(response, dict) or response.get("ok") is not True:
-        return False, "runtime package is not healthy"
-    version = response.get("data", {}).get("package_version")
-    if not isinstance(version, str):
-        return False, "runtime package version is unavailable"
-    return True, version
+    if validation.ok:
+        return True, validation.package_version or __version__
+    return False, f"{validation.code}: {validation.message}"
 
 
 def main() -> int:

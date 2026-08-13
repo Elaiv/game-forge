@@ -13,6 +13,8 @@ Use this protocol for the first real-project validation of forge-game. The purpo
 
 Run `forward-test-preflight` before Bootstrap and again before Feature. It is read-only and returns one `forward-test-report/1.0.0`.
 
+On a fresh Bootstrap host, use this order: run Bootstrap preflight before runtime setup; after it is `ready`, run approved `scripts/setup-runtime --project-root <project_root>`; rerun the same Bootstrap preflight and require `ready` again before starting the workflow. Before Bootstrap Apply installs the canonical Git ignore rules, only the exact `ProjectStorageLayout.runtime_environment` may be omitted from the Bootstrap Git baseline, and only after preflight verifies a real canonical CPython 3.12 venv, an in-venv current forge-game package, its real control entrypoint, successful `validate-package`, and no tracked runtime files. An absent runtime is valid for the first Bootstrap preflight. An invalid, symlinked, substituted, noncanonical, incompatible, or tracked runtime blocks explicitly. Every other untracked or tracked change, including any other path below `.forge-game/`, remains blocking. Feature never receives this pre-Apply exception and still requires the project `.gitignore`, installed control layer, current runtime, and an otherwise clean bootstrapped repository.
+
 Bootstrap request:
 
 ```json
