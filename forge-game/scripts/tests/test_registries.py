@@ -19,7 +19,7 @@ class RegistryTests(unittest.TestCase):
         self.actions = ActionCatalog(self.schemas, self.workflows)
 
     def test_loads_expected_contract_catalog(self) -> None:
-        self.assertEqual(len(self.schemas.ids()), 93)
+        self.assertEqual(len(self.schemas.ids()), 95)
         self.assertEqual(
             self.workflows.ids(),
             ("bootstrap", "feature", "refresh", "release"),

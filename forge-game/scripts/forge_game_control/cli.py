@@ -18,10 +18,11 @@ from .errors import (
     ProjectStorageError,
 )
 from .execution import ActionExecutor
-from .engineering_rules import EngineeringRuleCatalog, repository_snapshot
+from .engineering_rules import EngineeringRuleCatalog, bytes_hash, repository_snapshot
 from .filesystem_adapter import FilesystemAdapter
 from .forward_test import ForwardTestPreflight
 from .hook_gateway import evaluate_pre_tool
+from .human_review import render_from_store
 from .json_io import dumps_pretty, load_json, loads_json
 from .immutable_storage import ensure_child_directory, publish_immutable_json
 from .merge_drivers import MergeDriverRegistry
@@ -403,6 +404,23 @@ def _command_artifact_read(request: dict[str, Any]) -> dict[str, Any]:
     return {"document": document, "artifact": reference.to_dict()}
 
 
+def _command_human_review_render(request: dict[str, Any]) -> dict[str, Any]:
+    schemas = SchemaRegistry()
+    store = ArtifactStore(schemas, _canonical_store(request, "artifact_store"))
+    package = _request_document(request, "review_package", "review_package_path")
+    markdown = render_from_store(
+        schemas,
+        store,
+        _require(request, "workflow_id", str),
+        package,
+    )
+    return {
+        "markdown": markdown,
+        "content_hash": bytes_hash(markdown.encode("utf-8")),
+        "size": len(markdown.encode("utf-8")),
+    }
+
+
 def _command_approval_publish(request: dict[str, Any]) -> dict[str, Any]:
     store_root = _canonical_store(request, "approval_store")
     record = _request_document(request, "record", "record_path")
@@ -770,6 +788,7 @@ COMMANDS: dict[str, Command] = {
     "validate-package": _command_validate_package,
     "hash-json": _command_hash_json,
     "hook-check": _command_hook_check,
+    "human-review-render": _command_human_review_render,
     "policy-evaluate": _command_policy_evaluate,
     "projection-render": _command_projection_render,
     "reconciliation-plan": _command_reconciliation_plan,

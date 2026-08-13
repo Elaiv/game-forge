@@ -33,6 +33,9 @@ SLICE_PLAN_SCHEMA_ID = "forge-game://schemas/slice-plan/1.0.0"
 ARCHITECTURE_DELTA_SCHEMA_ID = "forge-game://schemas/architecture-delta/1.0.0"
 SLICE_SMOKE_RESULT_SCHEMA_ID = "forge-game://schemas/slice-smoke-result/1.0.0"
 SLICE_VERDICT_SCHEMA_ID = "forge-game://schemas/slice-verdict/1.0.0"
+HUMAN_REVIEW_PACKAGE_SCHEMA_ID = (
+    "forge-game://schemas/human-review-package/1.0.0"
+)
 CURRENT_PROJECT_STATE_SCHEMA_ID = "forge-game://schemas/project-state/1.2.0"
 CATALOG_PACKAGE = "forge_game_control.resources"
 CATALOG_FILE = "engineering-rule-catalog.json"
@@ -213,6 +216,7 @@ class EngineeringContractValidator:
         "architecture-delta": frozenset({ARCHITECTURE_DELTA_SCHEMA_ID}),
         "slice-smoke-result": frozenset({SLICE_SMOKE_RESULT_SCHEMA_ID}),
         "slice-verdict": frozenset({SLICE_VERDICT_SCHEMA_ID}),
+        "human-review-package": frozenset({HUMAN_REVIEW_PACKAGE_SCHEMA_ID}),
     }
 
     def __init__(

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "forge-game://schemas/gate-request/1.0.0",
+  "$id": "forge-game://schemas/gate-request/1.1.0",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -15,14 +15,19 @@
     "gate_id",
     "decisions",
     "subject_refs",
+    "context_refs",
+    "review_package_ref",
+    "readiness",
+    "blocking_reasons",
+    "guard_results",
     "project_state_revision",
     "run_state_revision",
     "requested_at",
     "content_hash"
   ],
   "properties": {
-    "schema_id": {"const": "forge-game://schemas/gate-request/1.0.0"},
-    "schema_version": {"const": "1.0.0"},
+    "schema_id": {"const": "forge-game://schemas/gate-request/1.1.0"},
+    "schema_version": {"const": "1.1.0"},
     "gate_request_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
     "run_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
     "workflow_id": {"enum": ["bootstrap", "feature", "refresh", "release"]},
@@ -34,11 +39,74 @@
     "subject_refs": {
       "type": "array",
       "minItems": 1,
+      "uniqueItems": true,
       "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/artifactRef"}
+    },
+    "context_refs": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/artifactRef"}
+    },
+    "review_package_ref": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "forge-game://schemas/common/1.0.0#/$defs/artifactRef"}
+      ]
+    },
+    "readiness": {"enum": ["ready", "blocked"]},
+    "blocking_reasons": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "message"],
+        "properties": {
+          "code": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+          "message": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}
+        }
+      }
+    },
+    "guard_results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["guard_id", "status", "evidence_refs"],
+        "properties": {
+          "guard_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+          "status": {"enum": ["satisfied", "blocked"]},
+          "evidence_refs": {
+            "type": "array",
+            "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/artifactRef"}
+          }
+        }
+      }
     },
     "project_state_revision": {"type": "integer", "minimum": 0},
     "run_state_revision": {"type": "integer", "minimum": 2},
     "requested_at": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/timestamp"},
     "content_hash": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/hash"}
-  }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"readiness": {"const": "ready"}}},
+      "then": {
+        "properties": {
+          "blocking_reasons": {"maxItems": 0},
+          "guard_results": {
+            "items": {"properties": {"status": {"const": "satisfied"}}}
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "decisions": {"const": ["reject"]},
+          "blocking_reasons": {"minItems": 1},
+          "guard_results": {
+            "items": {"properties": {"status": {"const": "blocked"}}}
+          }
+        }
+      }
+    }
+  ]
 }

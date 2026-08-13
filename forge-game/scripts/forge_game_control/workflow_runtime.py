@@ -16,10 +16,13 @@ from .content_addressing import content_hash, envelope_content_hash
 from .engineering_rules import (
     APPLICABILITY_SCHEMA_ID,
     ARCHITECTURE_DELTA_SCHEMA_ID,
+    ARCHITECTURE_MODEL_SCHEMA_ID,
     COMPLIANCE_SCHEMA_ID,
     EngineeringContractValidator,
+    MODULE_CATALOG_SCHEMA_ID,
     PHASE_OUTPUT_SCHEMA_ID,
     SLICE_APPLICABILITY_SCHEMA_ID,
+    SLICE_BACKLOG_SCHEMA_ID,
     SLICE_COMPLIANCE_SCHEMA_ID,
     SLICE_PLAN_SCHEMA_ID,
     SLICE_SMOKE_RESULT_SCHEMA_ID,
@@ -30,8 +33,15 @@ from .engineering_rules import (
 from .errors import (
     DocumentValidationError,
     ForgeGameError,
+    HumanReviewError,
     RunConflictError,
     WorkflowRuntimeError,
+)
+from .human_review import (
+    ARCHITECTURE_GATE_ID,
+    HUMAN_REVIEW_PACKAGE_SCHEMA_ID,
+    ArchitectureReviewPackageValidator,
+    artifact_identity,
 )
 from .immutable_storage import (
     ensure_child_directory,
@@ -69,7 +79,8 @@ START_BOUND_INVOCATION_SCHEMA_IDS = {
     "forge-game://schemas/phase-invocation/1.3.0",
 }
 RESULT_SCHEMA_ID = "forge-game://schemas/phase-result/1.2.0"
-GATE_REQUEST_SCHEMA_ID = "forge-game://schemas/gate-request/1.0.0"
+GATE_REQUEST_SCHEMA_ID = "forge-game://schemas/gate-request/1.1.0"
+LEGACY_GATE_REQUEST_SCHEMA_ID = "forge-game://schemas/gate-request/1.0.0"
 TRANSITION_SCHEMA_ID = "forge-game://schemas/transition-record/1.0.0"
 RECOVERY_SCHEMA_ID = "forge-game://schemas/recovery-request/1.0.0"
 ARTIFACT_SCHEMA_ID = "forge-game://schemas/artifact/1.0.0"
@@ -108,6 +119,7 @@ class WorkflowRuntime:
         self._schemas = schemas
         self._workflows = workflows
         self._engineering_contracts = EngineeringContractValidator(schemas)
+        self._human_reviews = ArchitectureReviewPackageValidator(schemas)
         self._storage_layout = storage_layout
         if storage_layout is not None:
             runtime_root = storage_layout.require_explicit_root(
@@ -525,6 +537,27 @@ class WorkflowRuntime:
                 raise WorkflowRuntimeError("Current phase is not a human gate")
             gate_request = self._load_gate_request(run_directory, state)
             approval, _ = self._approval_store.read(approval_id)
+            if (
+                gate_request["schema_id"] == LEGACY_GATE_REQUEST_SCHEMA_ID
+                and gate_request["gate_id"] == ARCHITECTURE_GATE_ID
+                and approval["decision"] == "approve"
+            ):
+                raise WorkflowRuntimeError(
+                    "Legacy architecture GateRequest cannot approve: reject it and "
+                    "issue a review-package-bound gate"
+                )
+            if gate_request["schema_id"] == GATE_REQUEST_SCHEMA_ID:
+                expected_request = self._build_gate_request(
+                    state,
+                    workflow,
+                    phase,
+                    gate_request["requested_at"],
+                    run_state_revision=gate_request["run_state_revision"],
+                )
+                if gate_request != expected_request:
+                    raise RunConflictError(
+                        "GateRequest subjects or review package are no longer current"
+                    )
             if approval["decision"] not in gate_request["decisions"]:
                 raise WorkflowRuntimeError(
                     f"Approval decision is not allowed by gate: {approval['decision']}"
@@ -704,21 +737,49 @@ class WorkflowRuntime:
             run_directory, "gates", state["current_phase"], state["attempt"]
         )
         if path.exists() or path.is_symlink():
-            gate_request = self._load_record(
-                path,
-                GATE_REQUEST_SCHEMA_ID,
-                "GateRequest",
-            )
-            expected_request = self._build_gate_request(
-                state,
-                workflow,
-                phase,
-                gate_request["requested_at"],
-            )
-            if gate_request != expected_request:
-                raise RunConflictError(
-                    "Existing GateRequest does not match the ready checkpoint"
+            loaded = load_json(path)
+            if not isinstance(loaded, dict):
+                raise WorkflowRuntimeError("GateRequest must be a JSON object")
+            schema_id = loaded.get("schema_id")
+            if schema_id == LEGACY_GATE_REQUEST_SCHEMA_ID:
+                self._schemas.validate(loaded, schema_id)
+                self._verify_envelope(loaded, "GateRequest")
+                expected_legacy = {
+                    "run_id": state["run_id"],
+                    "workflow_id": workflow["workflow_id"],
+                    "workflow_version": workflow["version"],
+                    "phase_id": state["current_phase"],
+                    "attempt": state["attempt"],
+                    "gate_id": phase["gate"]["gate_id"],
+                    "decisions": phase["gate"]["decisions"],
+                    "subject_refs": state["artifact_refs"],
+                    "project_state_revision": state["project_state_base"]["revision"],
+                    "run_state_revision": state["revision"] + 1,
+                }
+                if any(
+                    loaded[field] != value
+                    for field, value in expected_legacy.items()
+                ):
+                    raise RunConflictError(
+                        "Existing legacy GateRequest does not match the ready checkpoint"
+                    )
+                gate_request = loaded
+            else:
+                gate_request = self._load_record(
+                    path,
+                    GATE_REQUEST_SCHEMA_ID,
+                    "GateRequest",
                 )
+                expected_request = self._build_gate_request(
+                    state,
+                    workflow,
+                    phase,
+                    gate_request["requested_at"],
+                )
+                if gate_request != expected_request:
+                    raise RunConflictError(
+                        "Existing GateRequest does not match the ready checkpoint"
+                    )
         else:
             self._publish_or_match(
                 path,
@@ -750,13 +811,30 @@ class WorkflowRuntime:
         workflow: dict[str, Any],
         phase: dict[str, Any],
         requested_at: str,
+        *,
+        run_state_revision: int | None = None,
     ) -> dict[str, Any]:
         gate = phase["gate"]
         if gate is None:
             raise WorkflowRuntimeError("Human phase is missing a gate definition")
+        materials = self._gate_materials(state, phase)
+        blocked = bool(materials["blocking_reasons"])
+        decisions = list(gate["decisions"])
+        if blocked:
+            if "reject" not in phase["transitions"]:
+                raise WorkflowRuntimeError(
+                    "Human gate preconditions failed and the workflow has no reject path"
+                )
+            decisions = ["reject"]
+        guard_status = "blocked" if blocked else "satisfied"
+        guard_evidence = (
+            [materials["review_package_ref"]]
+            if materials["review_package_ref"] is not None
+            else materials["subject_refs"]
+        )
         request = {
             "schema_id": GATE_REQUEST_SCHEMA_ID,
-            "schema_version": "1.0.0",
+            "schema_version": "1.1.0",
             "gate_request_id": f"{state['run_id']}-{gate['gate_id']}-a{state['attempt']}",
             "run_id": state["run_id"],
             "workflow_id": workflow["workflow_id"],
@@ -764,16 +842,183 @@ class WorkflowRuntime:
             "phase_id": state["current_phase"],
             "attempt": state["attempt"],
             "gate_id": gate["gate_id"],
-            "decisions": gate["decisions"],
-            "subject_refs": state["artifact_refs"],
+            "decisions": decisions,
+            "subject_refs": materials["subject_refs"],
+            "context_refs": materials["context_refs"],
+            "review_package_ref": materials["review_package_ref"],
+            "readiness": "blocked" if blocked else "ready",
+            "blocking_reasons": materials["blocking_reasons"],
+            "guard_results": [
+                {
+                    "guard_id": guard_id,
+                    "status": guard_status,
+                    "evidence_refs": guard_evidence,
+                }
+                for guard_id in phase["guards"]
+            ],
             "project_state_revision": state["project_state_base"]["revision"],
-            "run_state_revision": state["revision"] + 1,
+            "run_state_revision": (
+                state["revision"] + 1
+                if run_state_revision is None
+                else run_state_revision
+            ),
             "requested_at": requested_at,
             "content_hash": "sha256:" + "0" * 64,
         }
         request["content_hash"] = envelope_content_hash(request)
         self._schemas.validate(request, GATE_REQUEST_SCHEMA_ID)
         return request
+
+    def _gate_materials(
+        self,
+        state: dict[str, Any],
+        phase: dict[str, Any],
+    ) -> dict[str, Any]:
+        workflow_id = state["workflow"]["workflow_id"]
+        entries = self._artifact_entries(workflow_id, state["artifact_refs"])
+        required_contracts = [
+            PHASE_OUTPUT_SCHEMA_ID if item == ARTIFACT_SCHEMA_ID else item
+            for item in phase["requires"]
+            if item != APPROVAL_SCHEMA_ID
+        ]
+        selected, missing = self._select_required_contracts(
+            entries, required_contracts
+        )
+        reasons = [
+            {
+                "code": "gate.subjects_missing",
+                "message": "Missing current gate subject contract: " + item,
+            }
+            for item in missing
+        ]
+        review_package_ref: dict[str, Any] | None = None
+        if phase["gate"]["gate_id"] == ARCHITECTURE_GATE_ID:
+            packages = [
+                item for item in entries if item[2] == HUMAN_REVIEW_PACKAGE_SCHEMA_ID
+            ]
+            if not packages:
+                reasons.append(
+                    {
+                        "code": "gate.review_package_missing",
+                        "message": (
+                            "Architecture approval requires one current, complete "
+                            "HumanReviewPackage"
+                        ),
+                    }
+                )
+            elif not missing:
+                package = packages[-1]
+                review_package_ref = package[1]
+                try:
+                    self._validate_architecture_package(package, selected)
+                except HumanReviewError as exc:
+                    reasons.append(
+                        {
+                            "code": "gate.review_package_incomplete",
+                            "message": str(exc),
+                        }
+                    )
+                else:
+                    selected.append(package)
+            phase_outputs = [
+                item for item in selected if item[2] == PHASE_OUTPUT_SCHEMA_ID
+            ]
+            if phase_outputs and phase_outputs[0][0]["phase_id"] != (
+                "bootstrap.architecture_review"
+            ):
+                reasons.append(
+                    {
+                        "code": "gate.independent_review_missing",
+                        "message": (
+                            "The current generic gate subject is not the independent "
+                            "architecture review output"
+                        ),
+                    }
+                )
+        subject_refs = _unique_refs([item[1] for item in selected])
+        subject_identities = {artifact_identity(item) for item in subject_refs}
+        context_refs = [
+            item
+            for item in state["artifact_refs"]
+            if artifact_identity(item) not in subject_identities
+        ]
+        return {
+            "subject_refs": subject_refs,
+            "context_refs": context_refs,
+            "review_package_ref": review_package_ref,
+            "blocking_reasons": reasons,
+        }
+
+    def _artifact_entries(
+        self,
+        workflow_id: str,
+        references: list[dict[str, Any]],
+    ) -> list[tuple[dict[str, Any], dict[str, Any], str, str]]:
+        if self._artifact_store is None:
+            raise WorkflowRuntimeError("Artifact store is required for human gates")
+        entries: list[tuple[dict[str, Any], dict[str, Any], str, str]] = []
+        for reference in references:
+            artifact, stored_ref = self._artifact_store.read(
+                workflow_id,
+                reference["artifact_id"],
+                revision=reference["revision"],
+            )
+            if stored_ref.content_hash != reference["content_hash"]:
+                raise WorkflowRuntimeError("RunState artifact hash mismatch")
+            contract_id = self._engineering_contracts.validate_artifact(artifact)
+            entries.append((artifact, reference, contract_id, stored_ref.path))
+        return entries
+
+    @staticmethod
+    def _select_required_contracts(
+        entries: list[tuple[dict[str, Any], dict[str, Any], str, str]],
+        required_contracts: list[str],
+    ) -> tuple[
+        list[tuple[dict[str, Any], dict[str, Any], str, str]], list[str]
+    ]:
+        selected: list[tuple[dict[str, Any], dict[str, Any], str, str]] = []
+        missing: list[str] = []
+        for contract_id in required_contracts:
+            match = next(
+                (item for item in reversed(entries) if item[2] == contract_id),
+                None,
+            )
+            if match is None:
+                missing.append(contract_id)
+            else:
+                selected.append(match)
+        return selected, missing
+
+    def _validate_architecture_package(
+        self,
+        package: tuple[dict[str, Any], dict[str, Any], str, str],
+        selected: list[tuple[dict[str, Any], dict[str, Any], str, str]],
+    ) -> None:
+        by_contract = {item[2]: item for item in selected}
+        try:
+            architecture = by_contract[ARCHITECTURE_MODEL_SCHEMA_ID]
+            catalog = by_contract[MODULE_CATALOG_SCHEMA_ID]
+            backlog = by_contract[SLICE_BACKLOG_SCHEMA_ID]
+        except KeyError as exc:
+            raise HumanReviewError(
+                "Architecture review subjects are incomplete"
+            ) from exc
+        if package[0]["status"] != "valid":
+            raise HumanReviewError("HumanReviewPackage is not valid")
+        if package[0]["phase_id"] != "bootstrap.architecture_review":
+            raise HumanReviewError(
+                "HumanReviewPackage was not produced by architecture review"
+            )
+        self._human_reviews.validate(
+            package[0],
+            package[3],
+            architecture[0],
+            architecture[1],
+            catalog[0],
+            catalog[1],
+            backlog[0],
+            backlog[1],
+        )
 
     def _block_without_transition(
         self,
@@ -904,6 +1149,9 @@ class WorkflowRuntime:
                 "Artifact store is required to verify PhaseResult references"
             )
         output_artifacts: list[tuple[dict[str, Any], dict[str, Any], str]] = []
+        referenced_artifacts: list[
+            tuple[dict[str, Any], dict[str, Any], str, str]
+        ] = []
         output_identities = {
             (reference["artifact_id"], reference["revision"], reference["content_hash"])
             for reference in result["artifact_refs"]
@@ -932,8 +1180,11 @@ class WorkflowRuntime:
                 reference["revision"],
                 reference["content_hash"],
             )
+            contract_id = self._engineering_contracts.validate_artifact(artifact)
+            referenced_artifacts.append(
+                (artifact, reference, contract_id, stored_ref.path)
+            )
             if identity in output_identities:
-                contract_id = self._engineering_contracts.validate_artifact(artifact)
                 if artifact["status"] != "valid":
                     raise WorkflowRuntimeError(
                         "PhaseResult output artifacts must have valid status"
@@ -962,8 +1213,68 @@ class WorkflowRuntime:
             invocation,
             output_artifacts,
         )
+        self._validate_human_review_evidence(
+            result,
+            state,
+            referenced_artifacts,
+        )
         self._validate_slice_outputs(result, invocation, output_artifacts)
         self._validate_action_references(result, state, phase)
+
+    def _validate_human_review_evidence(
+        self,
+        result: dict[str, Any],
+        state: dict[str, Any],
+        referenced_artifacts: list[
+            tuple[dict[str, Any], dict[str, Any], str, str]
+        ],
+    ) -> None:
+        if (
+            state["current_phase"] != "bootstrap.architecture_review"
+            or result["outcome"] != "approved"
+        ):
+            return
+        evidence_identities = {
+            artifact_identity(item) for item in result["evidence_refs"]
+        }
+        packages = [
+            item
+            for item in referenced_artifacts
+            if item[2] == HUMAN_REVIEW_PACKAGE_SCHEMA_ID
+            and artifact_identity(item[1]) in evidence_identities
+        ]
+        if len(packages) != 1:
+            raise WorkflowRuntimeError(
+                "gate.review_package_missing: an approved architecture review must "
+                "publish exactly one HumanReviewPackage as evidence"
+            )
+        package = packages[0]
+        if package[0]["status"] != "valid":
+            raise WorkflowRuntimeError(
+                "gate.review_package_incomplete: HumanReviewPackage must be valid"
+            )
+        entries = self._artifact_entries(
+            state["workflow"]["workflow_id"], state["artifact_refs"]
+        )
+        selected, missing = self._select_required_contracts(
+            entries,
+            [
+                ARCHITECTURE_MODEL_SCHEMA_ID,
+                MODULE_CATALOG_SCHEMA_ID,
+                SLICE_BACKLOG_SCHEMA_ID,
+            ],
+        )
+        if missing:
+            raise WorkflowRuntimeError(
+                "gate.review_package_incomplete: missing current subjects: "
+                + ", ".join(missing)
+            )
+        try:
+            self._validate_architecture_package(package, selected)
+        except HumanReviewError as exc:
+            raise WorkflowRuntimeError(
+                f"gate.review_package_incomplete: {exc}"
+            ) from exc
 
     def _validate_engineering_outputs(
         self,
@@ -1651,17 +1962,29 @@ class WorkflowRuntime:
         run_directory: Path,
         state: dict[str, Any],
     ) -> dict[str, Any]:
-        request = self._load_record(
-            self._attempt_record_path(
-                run_directory,
-                "gates",
-                state["current_phase"],
-                state["attempt"],
-                create=False,
-            ),
-            GATE_REQUEST_SCHEMA_ID,
-            "GateRequest",
+        path = self._attempt_record_path(
+            run_directory,
+            "gates",
+            state["current_phase"],
+            state["attempt"],
+            create=False,
         )
+        if path.is_symlink() or not path.is_file():
+            raise WorkflowRuntimeError(f"Missing immutable GateRequest: {path}")
+        loaded = load_json(path)
+        if not isinstance(loaded, dict):
+            raise WorkflowRuntimeError("GateRequest must be a JSON object")
+        schema_id = loaded.get("schema_id")
+        if schema_id not in {
+            GATE_REQUEST_SCHEMA_ID,
+            LEGACY_GATE_REQUEST_SCHEMA_ID,
+        }:
+            raise WorkflowRuntimeError(
+                f"Unsupported GateRequest schema: {schema_id!r}"
+            )
+        self._schemas.validate(loaded, schema_id)
+        self._verify_envelope(loaded, "GateRequest")
+        request = loaded
         pending = state["pending_gate"]
         if not isinstance(pending, dict) or pending.get("content_hash") != request[
             "content_hash"

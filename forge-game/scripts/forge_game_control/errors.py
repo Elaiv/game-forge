@@ -110,6 +110,10 @@ class EngineeringRulesError(ForgeGameError):
     code = "engineering_rules_error"
 
 
+class HumanReviewError(ForgeGameError):
+    code = "human_review_error"
+
+
 class MergeDriverError(ForgeGameError):
     code = "merge_driver_error"
 

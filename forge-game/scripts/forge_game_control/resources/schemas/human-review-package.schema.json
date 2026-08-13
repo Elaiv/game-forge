@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "forge-game://schemas/human-review-package/1.0.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_id",
+    "schema_version",
+    "package_id",
+    "gate_id",
+    "review_kind",
+    "title",
+    "subject_refs",
+    "source_refs",
+    "approval_scope",
+    "material_consequences",
+    "module_boundary_note",
+    "sections",
+    "coverage",
+    "traceability",
+    "changes_from_previous",
+    "review_findings",
+    "unresolved_risks",
+    "review_verdict",
+    "recommended_gate_decision",
+    "decision_rationale"
+  ],
+  "properties": {
+    "schema_id": {"const": "forge-game://schemas/human-review-package/1.0.0"},
+    "schema_version": {"const": "1.0.0"},
+    "package_id": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "gate_id": {"const": "bootstrap.architecture"},
+    "review_kind": {"const": "architecture"},
+    "title": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "subject_refs": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "uniqueItems": true,
+      "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/artifactRef"}
+    },
+    "source_refs": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/artifactRef"}
+    },
+    "approval_scope": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "material_consequences": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}
+    },
+    "module_boundary_note": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+    "sections": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "approval_scope",
+        "normative_subjects",
+        "systems",
+        "modules",
+        "dependencies",
+        "runtime_flows",
+        "non_functional_requirements",
+        "features_and_slices",
+        "traceability",
+        "revision_changes",
+        "unresolved_risks",
+        "decision"
+      ],
+      "properties": {
+        "approval_scope": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+        "normative_subjects": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+        "systems": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+        "modules": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+        "dependencies": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+        "runtime_flows": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+        "non_functional_requirements": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+        "features_and_slices": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+        "traceability": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+        "revision_changes": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+        "unresolved_risks": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"},
+        "decision": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "system_ids",
+        "module_ids",
+        "dependency_keys",
+        "runtime_flow_ids",
+        "nfr_ids",
+        "feature_ids",
+        "slice_ids",
+        "scenario_ids"
+      ],
+      "properties": {
+        "system_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}},
+        "module_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}},
+        "dependency_keys": {"type": "array", "uniqueItems": true, "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}},
+        "runtime_flow_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}},
+        "nfr_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}},
+        "feature_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}},
+        "slice_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}},
+        "scenario_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}}
+      }
+    },
+    "traceability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["covered_requirement_ids", "uncovered_requirement_ids", "summary"],
+      "properties": {
+        "covered_requirement_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}},
+        "uncovered_requirement_ids": {"type": "array", "uniqueItems": true, "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}},
+        "summary": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}
+      }
+    },
+    "changes_from_previous": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}},
+    "review_findings": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}},
+    "unresolved_risks": {"type": "array", "uniqueItems": true, "items": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}},
+    "review_verdict": {"enum": ["approved", "changes_required"]},
+    "recommended_gate_decision": {"enum": ["approve", "reject"]},
+    "decision_rationale": {"$ref": "forge-game://schemas/common/1.0.0#/$defs/nonEmptyString"}
+  }
+}
